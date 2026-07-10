@@ -224,9 +224,9 @@
             required
           ></select>
 
-          <label class="small fw-bold">Fecha y Hora:</label>
+          <label class="small fw-bold">Fecha:</label>
           <input
-            type="datetime-local"
+            type="date"
             name="fecha_manual"
             id="fechaNuevo"
             class="form-control"
@@ -311,15 +311,11 @@
             <button class="btn-fino" onclick="seleccionarTodoVisible()">
               Sel. Todo
             </button>
-            <button
-              class="btn-fino active"
-              id="btnOrdenCarga"
-              onclick="cambiarOrden('carga')"
-            >
+            <button class="btn-fino" id="btnOrdenCarga" onclick="cambiarOrden('carga')">
               Carga
             </button>
             <button
-              class="btn-fino"
+              class="btn-fino active"
               id="btnOrdenFecha"
               onclick="cambiarOrden('fecha')"
             >
@@ -345,8 +341,8 @@
               <select name="codigo_tienda" id="editCodigoTienda" class="form-select" required></select>
               <div class="small text-muted mb-2" style="margin-top:-4px;">La zona/local de la tarea no se puede cambiar desde aquí.</div>
 
-              <label class="small fw-bold">Fecha y hora:</label>
-              <input type="datetime-local" name="fecha_manual" id="editFecha" class="form-control" />
+              <label class="small fw-bold">Fecha:</label>
+              <input type="date" name="fecha_manual" id="editFecha" class="form-control" />
               <div class="small text-muted mb-2" style="margin-top:-4px;">Es la fecha con la que se cargó la tarea. Podés dejarla así o cambiarla; si la borrás, se conserva la original.</div>
 
               <label class="small fw-bold">Tarea:</label>
@@ -456,9 +452,11 @@
 
       let db = {}; // { "NOMBRE ZONA": [ {fila, fecha, codigoTienda, tarea, repuesto, foto, remito}, ... ] }
       let zonasFiltro = []; // vacío = todas
-      let criterioOrden = "carga";
+      let criterioOrden = "fecha";
       let filtroPendientesActivo = false;
       let seleccionadas = new Set(); // guarda claves "hoja||fila"
+      let expandidas = new Set(); // zonas donde se tocó "Ver todas"
+      const LIMITE_POR_SECCION = 20;
 
       const modalEdit = new bootstrap.Modal(document.getElementById("modalEditar"));
       const modalRemito = new bootstrap.Modal(document.getElementById("modalRemito"));
@@ -494,7 +492,7 @@
         document.getElementById("cont4").style.display = n === 4 ? "block" : "none";
         document.getElementById("t1").classList.toggle("active", n === 1);
         document.getElementById("t4").classList.toggle("active", n === 4);
-        if (n === 1) document.getElementById("fechaNuevo").value = obtenerFechaHoraActual();
+        if (n === 1) document.getElementById("fechaNuevo").value = obtenerFechaActual();
         if (n === 4) { renderZonasFiltro(); renderReporte(); }
       }
 
@@ -511,12 +509,14 @@
           else zonasFiltro.push(zona);
         }
         renderZonasFiltro();
+        expandidas.clear();
         renderReporte();
       }
 
       function toggleFiltroPendientes() {
         filtroPendientesActivo = !filtroPendientesActivo;
         document.getElementById("btnFiltroPendientes").classList.toggle("active", filtroPendientesActivo);
+        expandidas.clear();
         renderReporte();
       }
 
@@ -527,81 +527,120 @@
         renderReporte();
       }
 
-      function renderReporte() {
-        let todas = [];
-        ZONAS.forEach((z) => {
-          if (db[z]) db[z].forEach((t) => todas.push(Object.assign({ hoja: z }, t)));
-        });
+      function renderFilaTarea(t) {
+        const pendiente = esRemitoPendiente(t.remito);
+        const claveSel = `${t.hoja}||${t.fila}`;
+        const marcado = seleccionadas.has(claveSel);
+        const f = t.fecha ? new Date(t.fecha) : null;
+        const fLab = f ? `${f.getDate().toString().padStart(2, "0")}/${(f.getMonth() + 1).toString().padStart(2, "0")}` : "";
 
-        const query = document.getElementById("inputBusqueda").value.toLowerCase();
+        const paramTarea = (t.tarea || "").replace(/'/g, "\\'");
+        const paramCodigo = (t.codigoTienda || "").toString().replace(/'/g, "\\'");
+        const paramRepuesto = (t.repuesto || "").replace(/'/g, "\\'");
+        const paramFoto = (t.foto || "").replace(/'/g, "\\'");
+        const paramHoja = t.hoja.replace(/'/g, "\\'");
+        const tiendaInfo = buscarTiendaPorCodigo(t.codigoTienda);
+        const tiendaLabel = tiendaInfo ? `${t.codigoTienda} - ${tiendaInfo.nombre}` : t.codigoTienda;
 
-        let filtradas = todas.filter((t) => {
-          const pasaZona = zonasFiltro.length === 0 || zonasFiltro.includes(t.hoja);
-          const infoTienda = buscarTiendaPorCodigo(t.codigoTienda);
-          const nombreTienda = infoTienda ? infoTienda.nombre.toLowerCase() : "";
-          const pasaBusqueda = !query ||
-            (t.codigoTienda || "").toString().toLowerCase().includes(query) ||
-            nombreTienda.includes(query) ||
-            (t.tarea || "").toLowerCase().includes(query);
-          const pasaPendiente = !filtroPendientesActivo || esRemitoPendiente(t.remito);
-          return pasaZona && pasaBusqueda && pasaPendiente;
-        });
+        const { antes: fotoAntes, despues: fotoDespues } = separarFotos(t.foto);
+        let botonFoto = "";
+        if (fotoAntes) botonFoto += `<a href="${fotoAntes}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-image"></i> Antes</a>`;
+        if (fotoDespues) botonFoto += `<a href="${fotoDespues}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-image"></i> Después</a>`;
+        if (!botonFoto) botonFoto = `<span class="text-muted" style="font-size:0.65rem;">Sin fotos</span>`;
 
-        filtradas.sort((a, b) => {
-          if (criterioOrden === "fecha") return new Date(b.fecha) - new Date(a.fecha);
-          return b.fila - a.fila;
-        });
+        const { codigo: remitoCodigo, link: remitoLink } = separarRemito(t.remito);
+        let botonRemito = "";
+        if (remitoLink) botonRemito = `<a href="${remitoLink}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-folder2-open"></i> Ver en Drive</a>`;
 
-        // Contador visible: ayuda a detectar de un vistazo si algo no cargó
-        const totalGeneral = todas.length;
-        document.getElementById("contadorTareas").innerText =
-          `${filtradas.length} de ${totalGeneral} tareas`;
-
-        document.getElementById("listaDetallada").innerHTML = filtradas.map((t) => {
-          const pendiente = esRemitoPendiente(t.remito);
-          const claveSel = `${t.hoja}||${t.fila}`;
-          const marcado = seleccionadas.has(claveSel);
-          const f = t.fecha ? new Date(t.fecha) : null;
-          const fLab = f ? `${f.getDate().toString().padStart(2, "0")}/${(f.getMonth() + 1).toString().padStart(2, "0")}` : "";
-
-          const paramTarea = (t.tarea || "").replace(/'/g, "\\'");
-          const paramCodigo = (t.codigoTienda || "").toString().replace(/'/g, "\\'");
-          const paramRepuesto = (t.repuesto || "").replace(/'/g, "\\'");
-          const paramFoto = (t.foto || "").replace(/'/g, "\\'");
-          const paramHoja = t.hoja.replace(/'/g, "\\'");
-          const tiendaInfo = buscarTiendaPorCodigo(t.codigoTienda);
-          const tiendaLabel = tiendaInfo ? `${t.codigoTienda} - ${tiendaInfo.nombre}` : t.codigoTienda;
-
-          const { antes: fotoAntes, despues: fotoDespues } = separarFotos(t.foto);
-          let botonFoto = "";
-          if (fotoAntes) botonFoto += `<a href="${fotoAntes}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-image"></i> Antes</a>`;
-          if (fotoDespues) botonFoto += `<a href="${fotoDespues}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-image"></i> Después</a>`;
-          if (!botonFoto) botonFoto = `<span class="text-muted" style="font-size:0.65rem;">Sin fotos</span>`;
-
-          const { codigo: remitoCodigo, link: remitoLink } = separarRemito(t.remito);
-          let botonRemito = "";
-          if (remitoLink) botonRemito = `<a href="${remitoLink}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-folder2-open"></i> Ver en Drive</a>`;
-
-          return `<div class="tarea-fila ${marcado ? "selected" : ""}">
-              <div class="d-flex align-items-start gap-2" style="flex:1; min-width:0;">
-                ${pendiente ? `<input type="checkbox" class="form-check-input mt-1" ${marcado ? "checked" : ""} onclick="toggleSeleccion('${paramHoja}', ${t.fila})">` : `<span style="width:16px;"></span>`}
-                <div style="min-width:0;">
-                  <div class="small fw-bold">${t.tarea} <span class="text-muted fw-normal">(${fLab})</span></div>
-                  <div style="font-size:0.7rem; color:#888">${t.hoja} | Tienda: ${tiendaLabel}</div>
-                  ${t.repuesto ? `<div class="text-muted" style="font-size:0.7rem;"><i class="bi bi-tools"></i> ${t.repuesto}</div>` : ""}
-                  <div class="mt-1 d-flex align-items-center flex-wrap gap-2">
-                    ${botonFoto}
-                    ${botonRemito}
-                    <span class="badge-remito ${pendiente ? "badge-pendiente" : "badge-asignado"}">${pendiente ? "Pendiente" : "Remito: " + remitoCodigo}</span>
-                  </div>
+        return `<div class="tarea-fila ${marcado ? "selected" : ""}">
+            <div class="d-flex align-items-start gap-2" style="flex:1; min-width:0;">
+              ${pendiente ? `<input type="checkbox" class="form-check-input mt-1" ${marcado ? "checked" : ""} onclick="toggleSeleccion('${paramHoja}', ${t.fila})">` : `<span style="width:16px;"></span>`}
+              <div style="min-width:0;">
+                <div class="small fw-bold">${t.tarea} <span class="text-muted fw-normal">(${fLab})</span></div>
+                <div style="font-size:0.7rem; color:#888">${t.hoja} | Tienda: ${tiendaLabel}</div>
+                ${t.repuesto ? `<div class="text-muted" style="font-size:0.7rem;"><i class="bi bi-tools"></i> ${t.repuesto}</div>` : ""}
+                <div class="mt-1 d-flex align-items-center flex-wrap gap-2">
+                  ${botonFoto}
+                  ${botonRemito}
+                  <span class="badge-remito ${pendiente ? "badge-pendiente" : "badge-asignado"}">${pendiente ? "Pendiente" : "Remito: " + remitoCodigo}</span>
                 </div>
               </div>
-              <div class="text-end d-flex flex-column align-items-end gap-2">
-                <i class="bi bi-pencil-square text-muted" style="cursor:pointer" onclick="abrirEditor('${paramHoja}', ${t.fila}, '${paramCodigo}', '${t.fecha}', '${paramTarea}', '${paramRepuesto}', '${paramFoto}')"></i>
-                <i class="bi bi-trash3 text-danger" style="cursor:pointer" onclick="eliminarTarea('${paramHoja}', ${t.fila})"></i>
-              </div>
+            </div>
+            <div class="text-end d-flex flex-column align-items-end gap-2">
+              <i class="bi bi-pencil-square text-muted" style="cursor:pointer" onclick="abrirEditor('${paramHoja}', ${t.fila}, '${paramCodigo}', '${t.fecha}', '${paramTarea}', '${paramRepuesto}', '${paramFoto}')"></i>
+              <i class="bi bi-trash3 text-danger" style="cursor:pointer" onclick="eliminarTarea('${paramHoja}', ${t.fila})"></i>
+            </div>
+          </div>`;
+      }
+
+      function expandirZona(zona) {
+        expandidas.add(zona);
+        renderReporte();
+      }
+
+      function colapsarZona(zona) {
+        expandidas.delete(zona);
+        renderReporte();
+      }
+
+      function renderReporte() {
+        const query = document.getElementById("inputBusqueda").value.toLowerCase();
+        const zonasAMostrar = zonasFiltro.length === 0 ? ZONAS : zonasFiltro;
+
+        let totalGeneral = 0;
+        let totalMostradas = 0;
+        let html = "";
+
+        zonasAMostrar.forEach((zona) => {
+          const tareasZona = (db[zona] || []).map((t) => Object.assign({ hoja: zona }, t));
+          totalGeneral += tareasZona.length;
+
+          const filtradas = tareasZona.filter((t) => {
+            const infoTienda = buscarTiendaPorCodigo(t.codigoTienda);
+            const nombreTienda = infoTienda ? infoTienda.nombre.toLowerCase() : "";
+            const pasaBusqueda = !query ||
+              (t.codigoTienda || "").toString().toLowerCase().includes(query) ||
+              nombreTienda.includes(query) ||
+              (t.tarea || "").toLowerCase().includes(query);
+            const pasaPendiente = !filtroPendientesActivo || esRemitoPendiente(t.remito);
+            return pasaBusqueda && pasaPendiente;
+          });
+
+          if (filtradas.length === 0) return;
+
+          filtradas.sort((a, b) => {
+            if (criterioOrden === "fecha") return new Date(b.fecha) - new Date(a.fecha);
+            return b.fila - a.fila;
+          });
+
+          totalMostradas += filtradas.length;
+
+          const expandida = expandidas.has(zona);
+          const aRenderizar = expandida ? filtradas : filtradas.slice(0, LIMITE_POR_SECCION);
+          const restantes = filtradas.length - aRenderizar.length;
+          const zonaEscapada = zona.replace(/'/g, "\\'");
+
+          html += `<div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-bold" style="font-size:0.75rem;">${zona}</span>
+              <span class="text-muted" style="font-size:0.68rem;">${filtradas.length} tarea(s)</span>
             </div>`;
-        }).join("") || `<div class="text-center text-muted small py-4">No hay tareas para mostrar.</div>`;
+
+          html += aRenderizar.map(renderFilaTarea).join("");
+
+          if (restantes > 0) {
+            html += `<button class="btn-fino w-100 mt-1" onclick="expandirZona('${zonaEscapada}')">Ver todas (${restantes} más)</button>`;
+          } else if (expandida && filtradas.length > LIMITE_POR_SECCION) {
+            html += `<button class="btn-fino w-100 mt-1" onclick="colapsarZona('${zonaEscapada}')">Ver menos</button>`;
+          }
+
+          html += `</div>`;
+        });
+
+        document.getElementById("contadorTareas").innerText = `${totalMostradas} de ${totalGeneral} tareas`;
+
+        document.getElementById("listaDetallada").innerHTML =
+          html || `<div class="text-center text-muted small py-4">No hay tareas para mostrar.</div>`;
       }
 
       function esRemitoPendiente(remito) {
@@ -702,17 +741,11 @@
         if (modo === "nuevo") {
           // Al crear una tarea la fecha sigue siendo obligatoria.
           if (!fechaInput || !fechaInput.value) { alert("Fecha inválida"); return; }
-          const fechaLocal = new Date(fechaInput.value);
-          fd.set("fecha_manual", fechaLocal.getTime().toString());
+          fd.set("fecha_manual", fechaInput.value); // "yyyy-mm-dd"
         } else {
           // Al editar, la fecha es opcional: si no se tocó (o se borró),
           // no se envía y el backend conserva la fecha original de carga.
-          if (fechaInput && fechaInput.value) {
-            const fechaLocal = new Date(fechaInput.value);
-            fd.set("fecha_manual", fechaLocal.getTime().toString());
-          } else {
-            fd.set("fecha_manual", "");
-          }
+          fd.set("fecha_manual", fechaInput && fechaInput.value ? fechaInput.value : "");
         }
 
         fd.append("action", modo === "editar" ? "edit_tarea" : "add_tarea");
@@ -730,7 +763,7 @@
             modalEdit.hide();
           } else {
             form.reset();
-            document.getElementById("fechaNuevo").value = obtenerFechaHoraActual();
+            document.getElementById("fechaNuevo").value = obtenerFechaActual();
             onCambioTiendaNuevo();
           }
           await cargar();
@@ -802,15 +835,15 @@
         }
       }
 
-      function obtenerFechaHoraActual() {
+      function obtenerFechaActual() {
         const ahora = new Date();
         ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
-        return ahora.toISOString().slice(0, 16);
+        return ahora.toISOString().slice(0, 10);
       }
 
       window.onload = () => {
         inicializarSelects();
-        document.getElementById("fechaNuevo").value = obtenerFechaHoraActual();
+        document.getElementById("fechaNuevo").value = obtenerFechaActual();
         cargar();
       };
     </script>
