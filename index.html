@@ -183,6 +183,23 @@
         border: none;
         box-shadow: 0 4px 10px rgba(0,0,0,0.2);
       }
+
+      #contadorTareas {
+        font-size: 0.72rem;
+        color: #888;
+        font-weight: 700;
+      }
+      #btnRecargar {
+        font-size: 0.7rem;
+        font-weight: 700;
+        border-radius: 10px;
+        border: 1px solid #eee;
+        background: white;
+        color: var(--accent);
+        padding: 5px 10px;
+      }
+      #btnRecargar.spinning i { animation: girar 0.8s linear infinite; }
+      @keyframes girar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
@@ -198,23 +215,14 @@
     <div id="cont1">
       <div class="card-custom">
         <form id="formNuevo" onsubmit="prepararEnvio(event, 'nuevo')">
-          <label class="small fw-bold">Zona / Local:</label>
+          <label class="small fw-bold">Código de tienda:</label>
           <select
-            name="hoja"
-            id="hojaMain"
+            name="codigo_tienda"
+            id="selectTiendaNuevo"
             class="form-select"
-            onchange="actualizarSugerenciasTarea()"
+            onchange="onCambioTiendaNuevo()"
             required
           ></select>
-
-          <label class="small fw-bold">Código de tienda:</label>
-          <input
-            type="text"
-            name="codigo_tienda"
-            class="form-control"
-            placeholder="Ej: 0123"
-            required
-          />
 
           <label class="small fw-bold">Fecha y Hora:</label>
           <input
@@ -224,6 +232,8 @@
             class="form-control"
             required
           />
+
+          <input type="hidden" name="hoja" id="hojaNuevoHidden" />
 
           <label class="small fw-bold">Tarea:</label>
           <input
@@ -245,11 +255,17 @@
             placeholder="Ej: Lámpara LED 12W"
           />
 
-          <label class="small fw-bold">Foto (link de Drive - antes y después):</label>
+          <label class="small fw-bold">Foto Antes (link de Drive):</label>
           <input
             type="text"
-            name="foto"
-            class="form-control"
+            class="form-control input-foto-antes"
+            placeholder="https://drive.google.com/..."
+          />
+
+          <label class="small fw-bold">Foto Después (link de Drive):</label>
+          <input
+            type="text"
+            class="form-control input-foto-despues"
             placeholder="https://drive.google.com/..."
           />
 
@@ -260,6 +276,13 @@
 
     <div id="cont4" style="display: none">
       <div class="card-custom">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span id="contadorTareas">Cargando...</span>
+          <button id="btnRecargar" onclick="recargarManual()">
+            <i class="bi bi-arrow-clockwise"></i> Actualizar
+          </button>
+        </div>
+
         <div class="zonas-scroll mb-2" id="contenedorZonasFiltro"></div>
 
         <div class="d-flex gap-2 mb-2">
@@ -319,10 +342,12 @@
               <input type="hidden" name="hoja" id="editHoja" />
 
               <label class="small fw-bold">Código de tienda:</label>
-              <input type="text" name="codigo_tienda" id="editCodigoTienda" class="form-control" required />
+              <select name="codigo_tienda" id="editCodigoTienda" class="form-select" required></select>
+              <div class="small text-muted mb-2" style="margin-top:-4px;">La zona/local de la tarea no se puede cambiar desde aquí.</div>
 
               <label class="small fw-bold">Fecha y hora:</label>
-              <input type="datetime-local" name="fecha_manual" id="editFecha" class="form-control" required />
+              <input type="datetime-local" name="fecha_manual" id="editFecha" class="form-control" />
+              <div class="small text-muted mb-2" style="margin-top:-4px;">Es la fecha con la que se cargó la tarea. Podés dejarla así o cambiarla; si la borrás, se conserva la original.</div>
 
               <label class="small fw-bold">Tarea:</label>
               <input type="text" name="tarea" id="editTarea" class="form-control" required />
@@ -330,8 +355,11 @@
               <label class="small fw-bold">Repuesto:</label>
               <input type="text" name="repuesto" id="editRepuesto" class="form-control" />
 
-              <label class="small fw-bold">Foto (Drive):</label>
-              <input type="text" name="foto" id="editFoto" class="form-control mb-3" />
+              <label class="small fw-bold">Foto Antes (Drive):</label>
+              <input type="text" id="editFotoAntes" class="form-control input-foto-antes" />
+
+              <label class="small fw-bold">Foto Después (Drive):</label>
+              <input type="text" id="editFotoDespues" class="form-control input-foto-despues mb-3" />
 
               <button type="submit" class="btn-main">ACTUALIZAR</button>
             </form>
@@ -348,6 +376,8 @@
             <p class="small text-muted">Se asignará el número de Remito a <strong id="txtCantidadModal">0</strong> tarea(s) seleccionada(s).</p>
             <label class="small fw-bold">Número / Código de Remito:</label>
             <input type="text" id="inputRemitoCodigo" class="form-control mb-3" placeholder="Ej: R-00123" required />
+            <label class="small fw-bold">Link del Remito en Drive (opcional):</label>
+            <input type="text" id="inputRemitoLink" class="form-control mb-3" placeholder="https://drive.google.com/..." />
             <button type="button" class="btn-main" onclick="confirmarAgruparRemito()">CONFIRMAR</button>
           </div>
         </div>
@@ -356,17 +386,75 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-      const scriptURL = "https://script.google.com/macros/s/AKfycbxLyYG1h1HaZWlLN5gDWK7znA91SRv7I9vUHEpqPoVVPzElD_UxvV_ZwKzFRWW0bZ92/exec";
+      const scriptURL = "https://script.google.com/macros/s/AKfycbyJHx1iRdTMB3wx4c40rEEH5QJUE3XUNyfKONMHQ3CXgF6xYReFmFFMTcnUxMc_AqKT/exec";
 
       const ZONAS = [
-        "AVELLANEDA- PATIO BULLRICH",
-        "ALCORTA-PALERMO",
-        "DOT BAIRES-UNICENTER",
-        "FLORIDA-ABASTO",
+        "AVELLANEDA - PATIO BULLRICH",
+        "ALCORTA - ALTO PALERMO",
+        "DOT BAIRES - UNICENTER",
+        "FLORIDA - ABASTO",
         "SANTA FE"
       ];
 
-      let db = {}; // { "NOMBRE ZONA": [ {fila, fecha, codigoTienda, tarea, repuesto, foto, remito, idTarea}, ... ] }
+      // Tiendas reales con su código y la zona/hoja a la que pertenecen
+      const TIENDAS = [
+        { codigo: "7000", nombre: "Avellaneda", hoja: "AVELLANEDA - PATIO BULLRICH" },
+        { codigo: "7046", nombre: "Patio Bullrich", hoja: "AVELLANEDA - PATIO BULLRICH" },
+        { codigo: "7036", nombre: "Alcorta", hoja: "ALCORTA - ALTO PALERMO" },
+        { codigo: "7002", nombre: "Alto Palermo", hoja: "ALCORTA - ALTO PALERMO" },
+        { codigo: "7047", nombre: "Dot Baires", hoja: "DOT BAIRES - UNICENTER" },
+        { codigo: "7003", nombre: "Unicenter", hoja: "DOT BAIRES - UNICENTER" },
+        { codigo: "7008", nombre: "Florida", hoja: "FLORIDA - ABASTO" },
+        { codigo: "7005", nombre: "Abasto", hoja: "FLORIDA - ABASTO" },
+        { codigo: "7004", nombre: "Santa Fe", hoja: "SANTA FE" }
+      ];
+
+      // CORRECCIÓN: comparamos siempre como texto. El código de tienda puede
+      // llegar desde el backend como número (7000) o como texto ("7000")
+      // según cómo se haya tipeado en la celda de Sheets, y una comparación
+      // estricta (===) entre número y texto siempre da "no encontrado".
+      function buscarTiendaPorCodigo(codigo) {
+        const c = String(codigo).trim();
+        return TIENDAS.find((t) => String(t.codigo).trim() === c);
+      }
+
+      function hojaDeCodigoTienda(codigo) {
+        const t = buscarTiendaPorCodigo(codigo);
+        return t ? t.hoja : "";
+      }
+
+      // --- Helpers para el campo Foto combinado ---
+      function combinarFotos(antes, despues) {
+        const partes = [];
+        if (antes) partes.push(`Antes: ${antes}`);
+        if (despues) partes.push(`Despues: ${despues}`);
+        return partes.join(" | ");
+      }
+
+      function separarFotos(fotoStr) {
+        let antes = "", despues = "";
+        if (fotoStr) {
+          const mAntes = fotoStr.match(/Antes:\s*(\S+)/);
+          const mDespues = fotoStr.match(/Despues:\s*(\S+)/);
+          if (mAntes) antes = mAntes[1];
+          if (mDespues) despues = mDespues[1];
+        }
+        return { antes, despues };
+      }
+
+      // --- Helpers para el Remito con link opcional de Drive ---
+      function combinarRemito(codigo, link) {
+        return link ? `${codigo} | Drive: ${link}` : codigo;
+      }
+
+      function separarRemito(remitoStr) {
+        if (!remitoStr) return { codigo: "", link: "" };
+        const m = remitoStr.match(/^(.*?)\s*\|\s*Drive:\s*(\S+)\s*$/);
+        if (m) return { codigo: m[1].trim(), link: m[2].trim() };
+        return { codigo: remitoStr.trim(), link: "" };
+      }
+
+      let db = {}; // { "NOMBRE ZONA": [ {fila, fecha, codigoTienda, tarea, repuesto, foto, remito}, ... ] }
       let zonasFiltro = []; // vacío = todas
       let criterioOrden = "carga";
       let filtroPendientesActivo = false;
@@ -375,9 +463,30 @@
       const modalEdit = new bootstrap.Modal(document.getElementById("modalEditar"));
       const modalRemito = new bootstrap.Modal(document.getElementById("modalRemito"));
 
+      function opcionesTiendasHTML(tiendas) {
+        // Agrupadas por zona con optgroup, para que sea fácil de ubicar visualmente
+        const porZona = {};
+        tiendas.forEach((t) => {
+          if (!porZona[t.hoja]) porZona[t.hoja] = [];
+          porZona[t.hoja].push(t);
+        });
+        return Object.keys(porZona).map((zona) => {
+          const opciones = porZona[zona].map((t) => `<option value="${t.codigo}">${t.codigo} - ${t.nombre}</option>`).join("");
+          return `<optgroup label="${zona}">${opciones}</optgroup>`;
+        }).join("");
+      }
+
       function inicializarSelects() {
-        const selHoja = document.getElementById("hojaMain");
-        selHoja.innerHTML = ZONAS.map((z) => `<option value="${z}">${z}</option>`).join("");
+        const selTienda = document.getElementById("selectTiendaNuevo");
+        selTienda.innerHTML = opcionesTiendasHTML(TIENDAS);
+        onCambioTiendaNuevo(); // fija la hoja oculta según la primera tienda por defecto
+      }
+
+      function onCambioTiendaNuevo() {
+        const codigo = document.getElementById("selectTiendaNuevo").value;
+        const hoja = hojaDeCodigoTienda(codigo);
+        document.getElementById("hojaNuevoHidden").value = hoja;
+        actualizarSugerenciasTarea();
       }
 
       function verTab(n) {
@@ -428,8 +537,11 @@
 
         let filtradas = todas.filter((t) => {
           const pasaZona = zonasFiltro.length === 0 || zonasFiltro.includes(t.hoja);
+          const infoTienda = buscarTiendaPorCodigo(t.codigoTienda);
+          const nombreTienda = infoTienda ? infoTienda.nombre.toLowerCase() : "";
           const pasaBusqueda = !query ||
-            (t.codigoTienda || "").toLowerCase().includes(query) ||
+            (t.codigoTienda || "").toString().toLowerCase().includes(query) ||
+            nombreTienda.includes(query) ||
             (t.tarea || "").toLowerCase().includes(query);
           const pasaPendiente = !filtroPendientesActivo || esRemitoPendiente(t.remito);
           return pasaZona && pasaBusqueda && pasaPendiente;
@@ -440,6 +552,11 @@
           return b.fila - a.fila;
         });
 
+        // Contador visible: ayuda a detectar de un vistazo si algo no cargó
+        const totalGeneral = todas.length;
+        document.getElementById("contadorTareas").innerText =
+          `${filtradas.length} de ${totalGeneral} tareas`;
+
         document.getElementById("listaDetallada").innerHTML = filtradas.map((t) => {
           const pendiente = esRemitoPendiente(t.remito);
           const claveSel = `${t.hoja}||${t.fila}`;
@@ -448,25 +565,34 @@
           const fLab = f ? `${f.getDate().toString().padStart(2, "0")}/${(f.getMonth() + 1).toString().padStart(2, "0")}` : "";
 
           const paramTarea = (t.tarea || "").replace(/'/g, "\\'");
-          const paramCodigo = (t.codigoTienda || "").replace(/'/g, "\\'");
+          const paramCodigo = (t.codigoTienda || "").toString().replace(/'/g, "\\'");
           const paramRepuesto = (t.repuesto || "").replace(/'/g, "\\'");
           const paramFoto = (t.foto || "").replace(/'/g, "\\'");
           const paramHoja = t.hoja.replace(/'/g, "\\'");
+          const tiendaInfo = buscarTiendaPorCodigo(t.codigoTienda);
+          const tiendaLabel = tiendaInfo ? `${t.codigoTienda} - ${tiendaInfo.nombre}` : t.codigoTienda;
 
-          const botonFoto = t.foto
-            ? `<a href="${t.foto}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-image"></i> Foto</a>`
-            : `<span class="text-muted" style="font-size:0.65rem;">Sin foto</span>`;
+          const { antes: fotoAntes, despues: fotoDespues } = separarFotos(t.foto);
+          let botonFoto = "";
+          if (fotoAntes) botonFoto += `<a href="${fotoAntes}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-image"></i> Antes</a>`;
+          if (fotoDespues) botonFoto += `<a href="${fotoDespues}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-image"></i> Después</a>`;
+          if (!botonFoto) botonFoto = `<span class="text-muted" style="font-size:0.65rem;">Sin fotos</span>`;
+
+          const { codigo: remitoCodigo, link: remitoLink } = separarRemito(t.remito);
+          let botonRemito = "";
+          if (remitoLink) botonRemito = `<a href="${remitoLink}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-folder2-open"></i> Ver en Drive</a>`;
 
           return `<div class="tarea-fila ${marcado ? "selected" : ""}">
               <div class="d-flex align-items-start gap-2" style="flex:1; min-width:0;">
                 ${pendiente ? `<input type="checkbox" class="form-check-input mt-1" ${marcado ? "checked" : ""} onclick="toggleSeleccion('${paramHoja}', ${t.fila})">` : `<span style="width:16px;"></span>`}
                 <div style="min-width:0;">
                   <div class="small fw-bold">${t.tarea} <span class="text-muted fw-normal">(${fLab})</span></div>
-                  <div style="font-size:0.7rem; color:#888">${t.hoja} | Tienda: ${t.codigoTienda}</div>
+                  <div style="font-size:0.7rem; color:#888">${t.hoja} | Tienda: ${tiendaLabel}</div>
                   ${t.repuesto ? `<div class="text-muted" style="font-size:0.7rem;"><i class="bi bi-tools"></i> ${t.repuesto}</div>` : ""}
-                  <div class="mt-1 d-flex align-items-center gap-2">
+                  <div class="mt-1 d-flex align-items-center flex-wrap gap-2">
                     ${botonFoto}
-                    <span class="badge-remito ${pendiente ? "badge-pendiente" : "badge-asignado"}">${pendiente ? "Pendiente" : "Remito: " + t.remito}</span>
+                    ${botonRemito}
+                    <span class="badge-remito ${pendiente ? "badge-pendiente" : "badge-asignado"}">${pendiente ? "Pendiente" : "Remito: " + remitoCodigo}</span>
                   </div>
                 </div>
               </div>
@@ -479,7 +605,8 @@
       }
 
       function esRemitoPendiente(remito) {
-        return !remito || remito === "Pendiente" || remito.trim() === "";
+        const { codigo } = separarRemito(remito);
+        return !codigo || codigo === "Pendiente" || codigo.trim() === "";
       }
 
       function toggleSeleccion(hoja, fila) {
@@ -498,7 +625,7 @@
         const query = document.getElementById("inputBusqueda").value.toLowerCase();
         const visiblesPendientes = todas.filter((t) => {
           const pasaZona = zonasFiltro.length === 0 || zonasFiltro.includes(t.hoja);
-          const pasaBusqueda = !query || (t.codigoTienda || "").toLowerCase().includes(query) || (t.tarea || "").toLowerCase().includes(query);
+          const pasaBusqueda = !query || (t.codigoTienda || "").toString().toLowerCase().includes(query) || (t.tarea || "").toLowerCase().includes(query);
           return pasaZona && pasaBusqueda && esRemitoPendiente(t.remito);
         });
 
@@ -532,12 +659,16 @@
 
         document.getElementById("txtCantidadModal").innerText = seleccionadas.size;
         document.getElementById("inputRemitoCodigo").value = "";
+        document.getElementById("inputRemitoLink").value = "";
         modalRemito.show();
       }
 
       async function confirmarAgruparRemito() {
         const remito = document.getElementById("inputRemitoCodigo").value.trim();
+        const link = document.getElementById("inputRemitoLink").value.trim();
         if (!remito) { alert("Ingresa un número de Remito."); return; }
+
+        const remitoCombinado = combinarRemito(remito, link);
 
         const claves = [...seleccionadas];
         const hoja = claves[0].split("||")[0];
@@ -547,7 +678,7 @@
         fd.append("action", "agrupar_remito");
         fd.append("hoja", hoja);
         fd.append("ids", ids);
-        fd.append("remito", remito);
+        fd.append("remito", remitoCombinado);
 
         try {
           await fetch(scriptURL, { method: "POST", body: fd });
@@ -567,15 +698,29 @@
         const fd = new FormData(form);
 
         const fechaInput = document.getElementById(modo === "editar" ? "editFecha" : "fechaNuevo");
-        if (!fechaInput || !fechaInput.value) { alert("Fecha inválida"); return; }
-        const fechaLocal = new Date(fechaInput.value);
-
-        fd.set("fecha_manual", fechaLocal.getTime().toString());
-        fd.append("action", modo === "editar" ? "edit_tarea" : "add_tarea");
 
         if (modo === "nuevo") {
-          fd.append("id_tarea", Date.now().toString());
+          // Al crear una tarea la fecha sigue siendo obligatoria.
+          if (!fechaInput || !fechaInput.value) { alert("Fecha inválida"); return; }
+          const fechaLocal = new Date(fechaInput.value);
+          fd.set("fecha_manual", fechaLocal.getTime().toString());
+        } else {
+          // Al editar, la fecha es opcional: si no se tocó (o se borró),
+          // no se envía y el backend conserva la fecha original de carga.
+          if (fechaInput && fechaInput.value) {
+            const fechaLocal = new Date(fechaInput.value);
+            fd.set("fecha_manual", fechaLocal.getTime().toString());
+          } else {
+            fd.set("fecha_manual", "");
+          }
         }
+
+        fd.append("action", modo === "editar" ? "edit_tarea" : "add_tarea");
+
+        // Combinamos Foto Antes / Foto Después en un solo campo "foto"
+        const antesVal = form.querySelector(".input-foto-antes").value.trim();
+        const despuesVal = form.querySelector(".input-foto-despues").value.trim();
+        fd.append("foto", combinarFotos(antesVal, despuesVal));
 
         btn.disabled = true;
         btn.innerText = "...";
@@ -586,6 +731,7 @@
           } else {
             form.reset();
             document.getElementById("fechaNuevo").value = obtenerFechaHoraActual();
+            onCambioTiendaNuevo();
           }
           await cargar();
         } catch (error) {
@@ -597,14 +743,30 @@
       }
 
       async function cargar() {
-        const r = await fetch(`${scriptURL}?t=${Date.now()}`);
-        db = await r.json();
+        const btnRec = document.getElementById("btnRecargar");
+        if (btnRec) btnRec.classList.add("spinning");
+        try {
+          const r = await fetch(`${scriptURL}?t=${Date.now()}`);
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          const nuevaDb = await r.json();
+          db = nuevaDb;
+        } catch (error) {
+          console.error("Error cargando datos:", error);
+          alert("No se pudo actualizar la lista de tareas. Revisá tu conexión y tocá 'Actualizar'.");
+        } finally {
+          if (btnRec) btnRec.classList.remove("spinning");
+        }
         actualizarSugerenciasTarea();
         renderReporte();
       }
 
+      function recargarManual() {
+        cargar();
+      }
+
       function actualizarSugerenciasTarea() {
-        const h = document.getElementById("hojaMain").value;
+        const codigo = document.getElementById("selectTiendaNuevo").value;
+        const h = hojaDeCodigoTienda(codigo);
         const datalist = document.getElementById("sugerenciasTarea");
         const tareasUnicas = new Set();
         if (db[h]) db[h].forEach((t) => { if (t.tarea) tareasUnicas.add(t.tarea); });
@@ -614,11 +776,20 @@
       function abrirEditor(hoja, fila, codigo, fecha, tarea, repuesto, foto) {
         document.getElementById("editId").value = fila;
         document.getElementById("editHoja").value = hoja;
-        document.getElementById("editCodigoTienda").value = codigo;
+
+        const tiendasDeLaZona = TIENDAS.filter((t) => t.hoja === hoja);
+        const selTienda = document.getElementById("editCodigoTienda");
+        selTienda.innerHTML = opcionesTiendasHTML(tiendasDeLaZona);
+        selTienda.value = codigo;
+
         document.getElementById("editFecha").value = fecha;
         document.getElementById("editTarea").value = tarea;
         document.getElementById("editRepuesto").value = repuesto;
-        document.getElementById("editFoto").value = foto;
+
+        const { antes, despues } = separarFotos(foto);
+        document.getElementById("editFotoAntes").value = antes;
+        document.getElementById("editFotoDespues").value = despues;
+
         modalEdit.show();
       }
 
