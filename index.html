@@ -256,17 +256,27 @@
           />
 
           <label class="small fw-bold">Foto Antes (link de Drive):</label>
+          <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPicker('antes')">
+            <i class="bi bi-folder2-open"></i> Elegir foto (antes)
+          </button>
+          <div id="preview_antes" class="small text-muted mb-2"></div>
+          <input type="hidden" id="link_antes" name="link_antes" />
           <input
             type="text"
             class="form-control input-foto-antes"
-            placeholder="https://drive.google.com/..."
+            placeholder="https://drive.google.com/... (o elegí con el botón de arriba)"
           />
 
           <label class="small fw-bold">Foto Después (link de Drive):</label>
+          <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPicker('despues')">
+            <i class="bi bi-folder2-open"></i> Elegir foto (después)
+          </button>
+          <div id="preview_despues" class="small text-muted mb-2"></div>
+          <input type="hidden" id="link_despues" name="link_despues" />
           <input
             type="text"
             class="form-control input-foto-despues"
-            placeholder="https://drive.google.com/..."
+            placeholder="https://drive.google.com/... (o elegí con el botón de arriba)"
           />
 
           <button type="submit" class="btn-main mt-3">GUARDAR TAREA</button>
@@ -381,8 +391,9 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://apis.google.com/js/api.js" onload="onGapiLoaded()"></script>
     <script>
-      const scriptURL = "https://script.google.com/macros/s/AKfycbyJHx1iRdTMB3wx4c40rEEH5QJUE3XUNyfKONMHQ3CXgF6xYReFmFFMTcnUxMc_AqKT/exec";
+      const scriptURL = "https://script.google.com/macros/s/AKfycbwH2vbCB_-ZgrxistaVElX-EZV7htHN7L1QntGz1L1fKGsal88GmYzBWeK30SUBkxMWNg/exec";
 
       const ZONAS = [
         "AVELLANEDA - PATIO BULLRICH",
@@ -448,6 +459,80 @@
         const m = remitoStr.match(/^(.*?)\s*\|\s*Drive:\s*(\S+)\s*$/);
         if (m) return { codigo: m[1].trim(), link: m[2].trim() };
         return { codigo: remitoStr.trim(), link: "" };
+      }
+
+      // ============================================================
+      // GOOGLE PICKER API
+      // ============================================================
+      let pickerApiLoaded = false;
+
+      // Se llama solo cuando https://apis.google.com/js/api.js terminó de cargar
+      function onGapiLoaded() {
+        gapi.load("picker", () => { pickerApiLoaded = true; });
+      }
+
+      // Pide la API Key + token OAuth al backend (vía fetch, NO google.script.run,
+      // porque este HTML no se sirve desde Apps Script/HtmlService) y abre el picker.
+      async function abrirPicker(tipo) {
+        try {
+          const r = await fetch(`${scriptURL}?action=picker_config&t=${Date.now()}`);
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          const config = await r.json();
+
+          if (!config.apiKey || config.apiKey.indexOf("TU_") === 0) {
+            alert("Falta configurar la API Key de Google Picker en Code.gs (constante PICKER_API_KEY).");
+            return;
+          }
+          if (!config.oauthToken) {
+            alert("No se pudo obtener el token de acceso a Drive. Revisá los permisos de la implementación (ver instrucciones).");
+            return;
+          }
+
+          esperarPickerYCrear(tipo, config);
+        } catch (error) {
+          console.error("Error abriendo el picker:", error);
+          alert("No se pudo abrir el selector de Drive. Probá de nuevo en un momento.");
+        }
+      }
+
+      function esperarPickerYCrear(tipo, config) {
+        if (pickerApiLoaded) {
+          crearPicker(tipo, config);
+        } else {
+          setTimeout(() => esperarPickerYCrear(tipo, config), 200);
+        }
+      }
+
+      function crearPicker(tipo, config) {
+        const vista = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES)
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(false);
+
+        const picker = new google.picker.PickerBuilder()
+          .addView(vista)
+          .setOAuthToken(config.oauthToken)
+          .setDeveloperKey(config.apiKey)
+          .setCallback((data) => callbackPicker(data, tipo))
+          .build();
+
+        picker.setVisible(true);
+      }
+
+      function callbackPicker(data, tipo) {
+        if (data.action !== google.picker.Action.PICKED) return;
+
+        const archivo = data.docs[0];
+        const url = archivo.url || `https://drive.google.com/file/d/${archivo.id}/view`;
+
+        if (tipo === "antes") {
+          document.getElementById("link_antes").value = url;
+          document.querySelector(".input-foto-antes").value = url;
+          document.getElementById("preview_antes").innerText = "✓ " + archivo.name;
+        } else {
+          document.getElementById("link_despues").value = url;
+          document.querySelector(".input-foto-despues").value = url;
+          document.getElementById("preview_despues").innerText = "✓ " + archivo.name;
+        }
       }
 
       let db = {}; // { "NOMBRE ZONA": [ {fila, fecha, codigoTienda, tarea, repuesto, foto, remito}, ... ] }
@@ -764,6 +849,8 @@
           } else {
             form.reset();
             document.getElementById("fechaNuevo").value = obtenerFechaActual();
+            document.getElementById("preview_antes").innerText = "";
+            document.getElementById("preview_despues").innerText = "";
             onCambioTiendaNuevo();
           }
           await cargar();
