@@ -561,10 +561,28 @@
             .build();
 
           picker.setVisible(true);
+          forzarZIndexPicker();
         } catch (error) {
           console.error("Error creando el picker:", error);
           alert("No se pudo abrir el selector de Drive. Revisá que la API Key sea correcta y que la Picker API esté habilitada en Google Cloud Console.");
         }
+      }
+
+      // El picker de Google, por defecto, se crea con un z-index más bajo
+      // que el modal de Bootstrap (que usa 1050-1055), así que queda tapado
+      // cuando se abre desde el modal de Editar. Apenas aparecen sus
+      // elementos en el DOM, les subimos el z-index para que se vean por
+      // encima de todo.
+      function forzarZIndexPicker() {
+        let intentos = 0;
+        const intervalo = setInterval(() => {
+          const fondo = document.querySelector(".picker-dialog-bg");
+          const dialogo = document.querySelector(".picker-dialog");
+          if (fondo) fondo.style.zIndex = 2000;
+          if (dialogo) dialogo.style.zIndex = 2001;
+          intentos++;
+          if ((fondo && dialogo) || intentos > 25) clearInterval(intervalo); // ~5 seg. máx.
+        }, 200);
       }
 
       function callbackPicker(data, tipo, contexto) {
