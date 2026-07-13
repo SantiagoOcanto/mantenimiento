@@ -509,6 +509,12 @@
       // porque este HTML no se sirve desde Apps Script/HtmlService) y abre el picker.
       // contexto: "nuevo" | "editar" — indica qué formulario hay que completar.
       async function abrirPicker(tipo, contexto) {
+        // Si viene del modal de Editar, lo cerramos ANTES de abrir el picker
+        // (en vez de pelear con el z-index, que en celulares no es
+        // confiable). Los valores ya cargados en el formulario no se
+        // pierden: solo se oculta la ventana, no se resetea el contenido.
+        if (contexto === "editar") modalEdit.hide();
+
         try {
           const r = await fetch(`${scriptURL}?action=picker_config&t=${Date.now()}`);
           if (!r.ok) throw new Error("HTTP " + r.status);
@@ -516,10 +522,12 @@
 
           if (!config.apiKey || config.apiKey.indexOf("TU_") === 0) {
             alert("Falta configurar la API Key de Google Picker en Code.gs (constante PICKER_API_KEY).");
+            if (contexto === "editar") modalEdit.show();
             return;
           }
           if (!config.oauthToken) {
             alert("No se pudo obtener el token de acceso a Drive. Revisá los permisos de la implementación.");
+            if (contexto === "editar") modalEdit.show();
             return;
           }
 
@@ -527,12 +535,14 @@
         } catch (error) {
           console.error("Error pidiendo la configuración del picker:", error);
           alert("No se pudo contactar al servidor para abrir el selector de Drive.");
+          if (contexto === "editar") modalEdit.show();
         }
       }
 
       function esperarPickerYCrear(tipo, contexto, config, intentos) {
         if (pickerApiFalloCarga) {
           alert("No se pudo cargar la librería de Google (apis.google.com). Revisá tu conexión o si algún bloqueador de anuncios/extensión la está frenando.");
+          if (contexto === "editar") modalEdit.show();
           return;
         }
         if (pickerApiLoaded) {
@@ -541,6 +551,7 @@
         }
         if (intentos > 50) { // ~10 segundos de espera máxima
           alert("Google tardó demasiado en responder. Recargá la página y probá de nuevo.");
+          if (contexto === "editar") modalEdit.show();
           return;
         }
         setTimeout(() => esperarPickerYCrear(tipo, contexto, config, intentos + 1), 200);
@@ -561,50 +572,41 @@
             .build();
 
           picker.setVisible(true);
-          forzarZIndexPicker();
         } catch (error) {
           console.error("Error creando el picker:", error);
           alert("No se pudo abrir el selector de Drive. Revisá que la API Key sea correcta y que la Picker API esté habilitada en Google Cloud Console.");
+          if (contexto === "editar") modalEdit.show();
         }
       }
 
-      // El picker de Google, por defecto, se crea con un z-index más bajo
-      // que el modal de Bootstrap (que usa 1050-1055), así que queda tapado
-      // cuando se abre desde el modal de Editar. Apenas aparecen sus
-      // elementos en el DOM, les subimos el z-index para que se vean por
-      // encima de todo.
-      function forzarZIndexPicker() {
-        let intentos = 0;
-        const intervalo = setInterval(() => {
-          const fondo = document.querySelector(".picker-dialog-bg");
-          const dialogo = document.querySelector(".picker-dialog");
-          if (fondo) fondo.style.zIndex = 2000;
-          if (dialogo) dialogo.style.zIndex = 2001;
-          intentos++;
-          if ((fondo && dialogo) || intentos > 25) clearInterval(intervalo); // ~5 seg. máx.
-        }, 200);
-      }
-
       function callbackPicker(data, tipo, contexto) {
-        if (data.action !== google.picker.Action.PICKED) return;
+        if (data.action === google.picker.Action.PICKED) {
+          const archivo = data.docs[0];
+          const url = archivo.url || `https://drive.google.com/file/d/${archivo.id}/view`;
 
-        const archivo = data.docs[0];
-        const url = archivo.url || `https://drive.google.com/file/d/${archivo.id}/view`;
+          const clave = `${contexto}|${tipo}`;
+          const campos = CAMPOS_PICKER[clave];
+          if (campos) {
+            document.getElementById(campos.input).value = url;
+            const previewEl = document.getElementById(campos.preview);
+            if (previewEl) previewEl.innerText = "✓ " + archivo.name;
 
-        const clave = `${contexto}|${tipo}`;
-        const campos = CAMPOS_PICKER[clave];
-        if (!campos) return;
+            // El campo hidden solo existe en el formulario "nuevo"; lo
+            // mantenemos sincronizado por si en el futuro se usa como
+            // fuente independiente.
+            if (contexto === "nuevo") {
+              const hiddenId = tipo === "antes" ? "link_antes" : "link_despues";
+              const hiddenEl = document.getElementById(hiddenId);
+              if (hiddenEl) hiddenEl.value = url;
+            }
+          }
+        }
 
-        document.getElementById(campos.input).value = url;
-        const previewEl = document.getElementById(campos.preview);
-        if (previewEl) previewEl.innerText = "✓ " + archivo.name;
-
-        // El campo hidden solo existe en el formulario "nuevo"; lo mantenemos
-        // sincronizado por si en el futuro se usa como fuente independiente.
-        const hiddenId = tipo === "antes" ? "link_antes" : "link_despues";
-        if (contexto === "nuevo") {
-          const hiddenEl = document.getElementById(hiddenId);
-          if (hiddenEl) hiddenEl.value = url;
+        // El picker terminó (se eligió un archivo o se canceló): si veníamos
+        // del modal de Editar, lo volvemos a mostrar con los valores ya
+        // actualizados.
+        if (contexto === "editar") {
+          modalEdit.show();
         }
       }
 
