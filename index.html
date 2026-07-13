@@ -545,15 +545,19 @@
 
       function crearPicker(tipo, contexto, config) {
         try {
-          const vistaImagenes = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES)
+          const vistaImagenes = new google.picker.DocsView(google.picker.ViewId.DOCS)
+            .setMimeTypes("image/png,image/jpeg,image/jpg,image/gif,image/bmp,image/webp,image/tiff,image/svg+xml,image/heic")
             .setIncludeFolders(true)
             .setParent("root")
-            .setSelectFolderEnabled(false);
+            .setSelectFolderEnabled(false)
+            .setLabel("Fotos");
 
-          const vistaVideos = new google.picker.DocsView(google.picker.ViewId.DOCS_VIDEOS)
+          const vistaVideos = new google.picker.DocsView(google.picker.ViewId.DOCS)
+            .setMimeTypes("video/mp4,video/quicktime,video/x-msvideo,video/x-ms-wmv,video/x-flv,video/webm,video/mpeg,video/3gpp,video/3gpp2,video/ogg")
             .setIncludeFolders(true)
             .setParent("root")
-            .setSelectFolderEnabled(false);
+            .setSelectFolderEnabled(false)
+            .setLabel("Videos");
 
           const picker = new google.picker.PickerBuilder()
             .addView(vistaImagenes)
