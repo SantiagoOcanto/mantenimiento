@@ -547,10 +547,12 @@
         try {
           const vistaImagenes = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES)
             .setIncludeFolders(true)
+            .setParent("root")
             .setSelectFolderEnabled(false);
 
           const vistaVideos = new google.picker.DocsView(google.picker.ViewId.DOCS_VIDEOS)
             .setIncludeFolders(true)
+            .setParent("root")
             .setSelectFolderEnabled(false);
 
           const picker = new google.picker.PickerBuilder()
