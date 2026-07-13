@@ -343,8 +343,11 @@
     <div class="modal fade" id="modalEditar" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius: 20px">
-          <div class="modal-body">
-            <h6 class="fw-bold mb-3">EDITAR TAREA</h6>
+          <div class="modal-header border-0 pb-0">
+            <h6 class="fw-bold mb-0">EDITAR TAREA</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body pt-2">
             <form id="formEditar" onsubmit="prepararEnvio(event, 'editar')">
               <input type="hidden" name="id" id="editId" />
               <input type="hidden" name="hoja" id="editHoja" />
@@ -595,7 +598,10 @@
       let expandidas = new Set(); // zonas donde se tocó "Ver todas"
       const LIMITE_POR_SECCION = 20;
 
-      const modalEdit = new bootstrap.Modal(document.getElementById("modalEditar"));
+      const modalEdit = new bootstrap.Modal(document.getElementById("modalEditar"), {
+        backdrop: "static",
+        keyboard: false
+      });
       const modalRemito = new bootstrap.Modal(document.getElementById("modalRemito"));
 
       function opcionesTiendasHTML(tiendas) {
