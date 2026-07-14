@@ -255,6 +255,10 @@
             placeholder="Ej: Lámpara LED 12W"
           />
 
+          <button type="button" class="btn btn-main mb-2" style="background: var(--ok-green);" onclick="abrirPicker(null, 'nuevo', true)">
+            <i class="bi bi-images"></i> Elegir antes y después juntos
+          </button>
+
           <label class="small fw-bold">Antes (foto o video):</label>
           <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPicker('antes', 'nuevo')">
             <i class="bi bi-folder2-open"></i> Elegir de Drive (antes)
@@ -366,6 +370,10 @@
               <label class="small fw-bold">Repuesto:</label>
               <input type="text" name="repuesto" id="editRepuesto" class="form-control" />
 
+              <button type="button" class="btn btn-main mb-2" style="background: var(--ok-green);" onclick="abrirPicker(null, 'editar', true)">
+                <i class="bi bi-images"></i> Elegir antes y después juntos
+              </button>
+
               <label class="small fw-bold">Antes (foto o video):</label>
               <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPicker('antes', 'editar')">
                 <i class="bi bi-folder2-open"></i> Elegir de Drive (antes)
@@ -390,13 +398,20 @@
     <div class="modal fade" id="modalRemito" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius: 20px">
-          <div class="modal-body">
-            <h6 class="fw-bold mb-3"><i class="bi bi-link-45deg"></i> AGRUPAR EN REMITO</h6>
+          <div class="modal-header border-0 pb-0">
+            <h6 class="fw-bold mb-0"><i class="bi bi-link-45deg"></i> AGRUPAR EN REMITO</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body pt-2">
             <p class="small text-muted">Se asignará el número de Remito a <strong id="txtCantidadModal">0</strong> tarea(s) seleccionada(s).</p>
             <label class="small fw-bold">Número / Código de Remito:</label>
             <input type="text" id="inputRemitoCodigo" class="form-control mb-3" placeholder="Ej: R-00123" required />
             <label class="small fw-bold">Link del Remito en Drive (opcional):</label>
-            <input type="text" id="inputRemitoLink" class="form-control mb-3" placeholder="https://drive.google.com/..." />
+            <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPickerRemito()">
+              <i class="bi bi-folder2-open"></i> Elegir de Drive
+            </button>
+            <div id="preview_remito_link" class="small text-muted mb-2"></div>
+            <input type="text" id="inputRemitoLink" class="form-control mb-3" placeholder="https://drive.google.com/... (o elegí con el botón de arriba)" />
             <button type="button" class="btn-main" onclick="confirmarAgruparRemito()">CONFIRMAR</button>
           </div>
         </div>
@@ -423,7 +438,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       const scriptURL = "https://script.google.com/macros/s/AKfycbwH2vbCB_-ZgrxistaVElX-EZV7htHN7L1QntGz1L1fKGsal88GmYzBWeK30SUBkxMWNg/exec";
-
       const ZONAS = [
         "AVELLANEDA - PATIO BULLRICH",
         "ALCORTA - ALTO PALERMO",
@@ -497,7 +511,7 @@
       // ============================================================
 
       // Cada campo (antes/después) x contexto (nuevo/editar) mapea a los
-      // elementos del DOM que hay que actualizar cuando se elige una foto.
+      // elementos del DOM que hay que actualizar cuando se elige un archivo.
       const CAMPOS_PICKER = {
         "nuevo|antes": { input: "fotoAntesNuevo", preview: "preview_antes_nuevo" },
         "nuevo|despues": { input: "fotoDespuesNuevo", preview: "preview_despues_nuevo" },
@@ -505,15 +519,35 @@
         "editar|despues": { input: "editFotoDespues", preview: "preview_despues_editar" }
       };
 
+      // Instancia de modal de Bootstrap que hay que ocultar/mostrar según el
+      // contexto ("nuevo" no tiene modal, es la pestaña de siempre).
+      function modalDeContexto(contexto) {
+        if (contexto === "editar") return modalEdit;
+        if (contexto === "remito") return modalRemito;
+        return null;
+      }
+
+      // Vuelca los datos del archivo elegido en el input + preview
+      // correspondientes.
+      function asignarArchivoPicker(inputId, previewId, archivo) {
+        const url = archivo.url || `https://drive.google.com/file/d/${archivo.id}/view`;
+        document.getElementById(inputId).value = url;
+        const previewEl = document.getElementById(previewId);
+        if (previewEl) previewEl.innerText = "✓ " + archivo.name;
+        return url;
+      }
+
       // Pide la API Key + token OAuth al backend (vía fetch, NO google.script.run,
       // porque este HTML no se sirve desde Apps Script/HtmlService) y abre el picker.
-      // contexto: "nuevo" | "editar" — indica qué formulario hay que completar.
-      async function abrirPicker(tipo, contexto) {
-        // Si viene del modal de Editar, lo cerramos ANTES de abrir el picker
-        // (en vez de pelear con el z-index, que en celulares no es
-        // confiable). Los valores ya cargados en el formulario no se
-        // pierden: solo se oculta la ventana, no se resetea el contenido.
-        if (contexto === "editar") modalEdit.hide();
+      // contexto: "nuevo" | "editar" | "remito" — indica qué formulario hay
+      // que completar. combinado: true para elegir antes+después juntos.
+      async function abrirPicker(tipo, contexto, combinado) {
+        // Si viene de un modal (Editar o Remito), lo cerramos ANTES de abrir
+        // el picker (en vez de pelear con el z-index, que en celulares no es
+        // confiable). Los valores ya cargados no se pierden: solo se oculta
+        // la ventana, no se resetea el contenido.
+        const modal = modalDeContexto(contexto);
+        if (modal) modal.hide();
 
         try {
           const r = await fetch(`${scriptURL}?action=picker_config&t=${Date.now()}`);
@@ -522,92 +556,115 @@
 
           if (!config.apiKey || config.apiKey.indexOf("TU_") === 0) {
             alert("Falta configurar la API Key de Google Picker en Code.gs (constante PICKER_API_KEY).");
-            if (contexto === "editar") modalEdit.show();
+            if (modal) modal.show();
             return;
           }
           if (!config.oauthToken) {
             alert("No se pudo obtener el token de acceso a Drive. Revisá los permisos de la implementación.");
-            if (contexto === "editar") modalEdit.show();
+            if (modal) modal.show();
             return;
           }
 
-          esperarPickerYCrear(tipo, contexto, config, 0);
+          esperarPickerYCrear(tipo, contexto, combinado, config, 0);
         } catch (error) {
           console.error("Error pidiendo la configuración del picker:", error);
           alert("No se pudo contactar al servidor para abrir el selector de Drive.");
-          if (contexto === "editar") modalEdit.show();
+          if (modal) modal.show();
         }
       }
 
-      function esperarPickerYCrear(tipo, contexto, config, intentos) {
+      function esperarPickerYCrear(tipo, contexto, combinado, config, intentos) {
+        const modal = modalDeContexto(contexto);
         if (pickerApiFalloCarga) {
           alert("No se pudo cargar la librería de Google (apis.google.com). Revisá tu conexión o si algún bloqueador de anuncios/extensión la está frenando.");
-          if (contexto === "editar") modalEdit.show();
+          if (modal) modal.show();
           return;
         }
         if (pickerApiLoaded) {
-          crearPicker(tipo, contexto, config);
+          crearPicker(tipo, contexto, combinado, config);
           return;
         }
         if (intentos > 50) { // ~10 segundos de espera máxima
           alert("Google tardó demasiado en responder. Recargá la página y probá de nuevo.");
-          if (contexto === "editar") modalEdit.show();
+          if (modal) modal.show();
           return;
         }
-        setTimeout(() => esperarPickerYCrear(tipo, contexto, config, intentos + 1), 200);
+        setTimeout(() => esperarPickerYCrear(tipo, contexto, combinado, config, intentos + 1), 200);
       }
 
-      function crearPicker(tipo, contexto, config) {
+      function crearPicker(tipo, contexto, combinado, config) {
+        const modal = modalDeContexto(contexto);
         try {
           const vista = new google.picker.DocsView(google.picker.ViewId.DOCS)
             .setIncludeFolders(true)
             .setParent("root")
             .setSelectFolderEnabled(false);
 
-          const picker = new google.picker.PickerBuilder()
+          const builder = new google.picker.PickerBuilder()
             .addView(vista)
             .setOAuthToken(config.oauthToken)
             .setDeveloperKey(config.apiKey)
-            .setCallback((data) => callbackPicker(data, tipo, contexto))
-            .build();
+            .setCallback((data) => callbackPicker(data, tipo, contexto, combinado));
 
-          picker.setVisible(true);
+          // Selección combinada: se habilita elegir varios archivos a la vez
+          // (el primero se asigna a "antes" y el segundo a "después"), para
+          // no tener que abrir y cerrar el modal dos veces seguidas.
+          if (combinado) {
+            builder.enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
+          }
+
+          builder.build().setVisible(true);
         } catch (error) {
           console.error("Error creando el picker:", error);
           alert("No se pudo abrir el selector de Drive. Revisá que la API Key sea correcta y que la Picker API esté habilitada en Google Cloud Console.");
-          if (contexto === "editar") modalEdit.show();
+          if (modal) modal.show();
         }
       }
 
-      function callbackPicker(data, tipo, contexto) {
+      function callbackPicker(data, tipo, contexto, combinado) {
         if (data.action === google.picker.Action.PICKED) {
-          const archivo = data.docs[0];
-          const url = archivo.url || `https://drive.google.com/file/d/${archivo.id}/view`;
-
-          const clave = `${contexto}|${tipo}`;
-          const campos = CAMPOS_PICKER[clave];
-          if (campos) {
-            document.getElementById(campos.input).value = url;
-            const previewEl = document.getElementById(campos.preview);
-            if (previewEl) previewEl.innerText = "✓ " + archivo.name;
-
-            // El campo hidden solo existe en el formulario "nuevo"; lo
-            // mantenemos sincronizado por si en el futuro se usa como
-            // fuente independiente.
-            if (contexto === "nuevo") {
-              const hiddenId = tipo === "antes" ? "link_antes" : "link_despues";
-              const hiddenEl = document.getElementById(hiddenId);
-              if (hiddenEl) hiddenEl.value = url;
+          if (contexto === "remito") {
+            const archivo = data.docs[0];
+            if (archivo) asignarArchivoPicker("inputRemitoLink", "preview_remito_link", archivo);
+          } else if (combinado) {
+            // Primer archivo elegido → antes, segundo → después.
+            const tipos = ["antes", "despues"];
+            data.docs.slice(0, 2).forEach((archivo, i) => {
+              const campos = CAMPOS_PICKER[`${contexto}|${tipos[i]}`];
+              if (!campos) return;
+              const url = asignarArchivoPicker(campos.input, campos.preview, archivo);
+              if (contexto === "nuevo") {
+                const hiddenEl = document.getElementById(tipos[i] === "antes" ? "link_antes" : "link_despues");
+                if (hiddenEl) hiddenEl.value = url;
+              }
+            });
+          } else {
+            const archivo = data.docs[0];
+            const campos = CAMPOS_PICKER[`${contexto}|${tipo}`];
+            if (archivo && campos) {
+              const url = asignarArchivoPicker(campos.input, campos.preview, archivo);
+              // El campo hidden solo existe en el formulario "nuevo"; lo
+              // mantenemos sincronizado por si en el futuro se usa como
+              // fuente independiente.
+              if (contexto === "nuevo") {
+                const hiddenEl = document.getElementById(tipo === "antes" ? "link_antes" : "link_despues");
+                if (hiddenEl) hiddenEl.value = url;
+              }
             }
           }
         }
 
-        // El picker terminó (se eligió un archivo o se canceló): si veníamos
-        // del modal de Editar, lo volvemos a mostrar con los valores ya
-        // actualizados.
-        if (contexto === "editar") {
-          modalEdit.show();
-        }
+        // El picker terminó (se eligió algo o se canceló): si veníamos de un
+        // modal (Editar o Remito), lo volvemos a mostrar con los valores ya
+        // actualizados. Esto pasa UNA sola vez por viaje a Drive, incluso en
+        // el modo combinado (antes + después juntos).
+        const modal = modalDeContexto(contexto);
+        if (modal) modal.show();
+      }
+
+      // Atajo para el botón "Elegir de Drive" del link de Remito.
+      function abrirPickerRemito() {
+        abrirPicker(null, "remito", false);
       }
 
       let db = {}; // { "NOMBRE ZONA": [ {fila, fecha, codigoTienda, tarea, repuesto, foto, remito}, ... ] }
@@ -622,7 +679,10 @@
         backdrop: "static",
         keyboard: false
       });
-      const modalRemito = new bootstrap.Modal(document.getElementById("modalRemito"));
+      const modalRemito = new bootstrap.Modal(document.getElementById("modalRemito"), {
+        backdrop: "static",
+        keyboard: false
+      });
 
       function opcionesTiendasHTML(tiendas) {
         // Agrupadas por zona con optgroup, para que sea fácil de ubicar visualmente
@@ -862,6 +922,7 @@
         document.getElementById("txtCantidadModal").innerText = seleccionadas.size;
         document.getElementById("inputRemitoCodigo").value = "";
         document.getElementById("inputRemitoLink").value = "";
+        document.getElementById("preview_remito_link").innerText = "";
         modalRemito.show();
       }
 
