@@ -255,34 +255,29 @@
             placeholder="Ej: Lámpara LED 12W"
           />
 
-          <button type="button" class="btn btn-main mb-2" style="background: var(--ok-green);" onclick="abrirPicker(null, 'nuevo', true)">
-            <i class="bi bi-images"></i> Elegir antes y después juntos
+          <label class="small fw-bold">Fotos / videos (antes y después):</label>
+          <button type="button" class="btn btn-main mb-2" style="background: var(--ok-green);" onclick="abrirPicker('nuevo')">
+            <i class="bi bi-images"></i> Elegir de Drive (antes y después)
           </button>
 
-          <label class="small fw-bold">Antes (foto o video):</label>
-          <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPicker('antes', 'nuevo')">
-            <i class="bi bi-folder2-open"></i> Elegir de Drive (antes)
-          </button>
+          <div class="small text-muted mb-1">Antes:</div>
           <div id="preview_antes_nuevo" class="small text-muted mb-2"></div>
           <input type="hidden" id="link_antes" name="link_antes" />
           <input
             type="text"
             id="fotoAntesNuevo"
             class="form-control input-foto-antes"
-            placeholder="https://drive.google.com/... (o elegí con el botón de arriba)"
+            placeholder="https://drive.google.com/... (o pegalo a mano)"
           />
 
-          <label class="small fw-bold">Después (foto o video):</label>
-          <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPicker('despues', 'nuevo')">
-            <i class="bi bi-folder2-open"></i> Elegir de Drive (después)
-          </button>
+          <div class="small text-muted mb-1">Después:</div>
           <div id="preview_despues_nuevo" class="small text-muted mb-2"></div>
           <input type="hidden" id="link_despues" name="link_despues" />
           <input
             type="text"
             id="fotoDespuesNuevo"
             class="form-control input-foto-despues"
-            placeholder="https://drive.google.com/... (o elegí con el botón de arriba)"
+            placeholder="https://drive.google.com/... (o pegalo a mano)"
           />
 
           <button type="submit" class="btn-main mt-3">GUARDAR TAREA</button>
@@ -370,23 +365,18 @@
               <label class="small fw-bold">Repuesto:</label>
               <input type="text" name="repuesto" id="editRepuesto" class="form-control" />
 
-              <button type="button" class="btn btn-main mb-2" style="background: var(--ok-green);" onclick="abrirPicker(null, 'editar', true)">
-                <i class="bi bi-images"></i> Elegir antes y después juntos
+              <label class="small fw-bold">Fotos / videos (antes y después):</label>
+              <button type="button" class="btn btn-main mb-2" style="background: var(--ok-green);" onclick="abrirPicker('editar')">
+                <i class="bi bi-images"></i> Elegir de Drive (antes y después)
               </button>
 
-              <label class="small fw-bold">Antes (foto o video):</label>
-              <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPicker('antes', 'editar')">
-                <i class="bi bi-folder2-open"></i> Elegir de Drive (antes)
-              </button>
+              <div class="small text-muted mb-1">Antes:</div>
               <div id="preview_antes_editar" class="small text-muted mb-2"></div>
-              <input type="text" id="editFotoAntes" class="form-control input-foto-antes" placeholder="https://drive.google.com/... (o elegí con el botón de arriba)" />
+              <input type="text" id="editFotoAntes" class="form-control input-foto-antes" placeholder="https://drive.google.com/... (o pegalo a mano)" />
 
-              <label class="small fw-bold">Después (foto o video):</label>
-              <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPicker('despues', 'editar')">
-                <i class="bi bi-folder2-open"></i> Elegir de Drive (después)
-              </button>
+              <div class="small text-muted mb-1">Después:</div>
               <div id="preview_despues_editar" class="small text-muted mb-2"></div>
-              <input type="text" id="editFotoDespues" class="form-control input-foto-despues mb-3" placeholder="https://drive.google.com/... (o elegí con el botón de arriba)" />
+              <input type="text" id="editFotoDespues" class="form-control input-foto-despues mb-3" placeholder="https://drive.google.com/... (o pegalo a mano)" />
 
               <button type="submit" class="btn-main">ACTUALIZAR</button>
             </form>
@@ -542,7 +532,7 @@
       // porque este HTML no se sirve desde Apps Script/HtmlService) y abre el picker.
       // contexto: "nuevo" | "editar" | "remito" — indica qué formulario hay
       // que completar. combinado: true para elegir antes+después juntos.
-      async function abrirPicker(tipo, contexto, combinado) {
+      async function abrirPicker(contexto) {
         // Si viene de un modal (Editar o Remito), lo cerramos ANTES de abrir
         // el picker (en vez de pelear con el z-index, que en celulares no es
         // confiable). Los valores ya cargados no se pierden: solo se oculta
@@ -566,7 +556,7 @@
             return;
           }
 
-          esperarPickerYCrear(tipo, contexto, combinado, config, 0);
+          esperarPickerYCrear(contexto, config, 0);
         } catch (error) {
           console.error("Error pidiendo la configuración del picker:", error);
           alert("No se pudo contactar al servidor para abrir el selector de Drive.");
@@ -574,7 +564,7 @@
         }
       }
 
-      function esperarPickerYCrear(tipo, contexto, combinado, config, intentos) {
+      function esperarPickerYCrear(contexto, config, intentos) {
         const modal = modalDeContexto(contexto);
         if (pickerApiFalloCarga) {
           alert("No se pudo cargar la librería de Google (apis.google.com). Revisá tu conexión o si algún bloqueador de anuncios/extensión la está frenando.");
@@ -582,7 +572,7 @@
           return;
         }
         if (pickerApiLoaded) {
-          crearPicker(tipo, contexto, combinado, config);
+          crearPicker(contexto, config);
           return;
         }
         if (intentos > 50) { // ~10 segundos de espera máxima
@@ -590,10 +580,10 @@
           if (modal) modal.show();
           return;
         }
-        setTimeout(() => esperarPickerYCrear(tipo, contexto, combinado, config, intentos + 1), 200);
+        setTimeout(() => esperarPickerYCrear(contexto, config, intentos + 1), 200);
       }
 
-      function crearPicker(tipo, contexto, combinado, config) {
+      function crearPicker(contexto, config) {
         const modal = modalDeContexto(contexto);
         try {
           const vista = new google.picker.DocsView(google.picker.ViewId.DOCS)
@@ -608,21 +598,32 @@
             .setOAuthToken(config.oauthToken)
             .setDeveloperKey(config.apiKey)
             .setCallback((data) => {
-              callbackPicker(data, tipo, contexto, combinado);
-              // Destruimos el picker apenas termina (elijas o canceles).
-              // Si no se hace esto, a veces queda una capa invisible del
-              // picker pegada en la pantalla que bloquea los clics
-              // siguientes, incluso sobre los botones "Elegir de Drive".
+              // OJO: el picker llama a este callback varias veces durante su
+              // ciclo de vida, entre otras con la acción "loaded" (apenas
+              // termina de abrirse, antes de elegir nada). Si tratáramos
+              // cualquier llamada como "ya terminó", se destruía solo al
+              // instante de abrirse. Por eso filtramos: solo actuamos ante
+              // PICKED o CANCEL, que son los que indican que el usuario
+              // terminó de usarlo.
+              if (data.action !== google.picker.Action.PICKED && data.action !== google.picker.Action.CANCEL) {
+                return;
+              }
+
+              callbackPicker(data, contexto);
+
               if (pickerInstance) {
                 pickerInstance.dispose();
                 pickerInstance = null;
               }
+              // Red de seguridad: por si dispose() deja algún resto
+              // invisible del picker bloqueando clics futuros.
+              setTimeout(limpiarRestosPicker, 300);
             });
 
-          // Selección combinada: se habilita elegir varios archivos a la vez
-          // (el primero se asigna a "antes" y el segundo a "después"), para
-          // no tener que abrir y cerrar el modal dos veces seguidas.
-          if (combinado) {
+          // Los archivos de "remito" son de a uno; las fotos/videos de
+          // tareas siempre se piden de a dos (antes + después) en un solo
+          // viaje a Drive.
+          if (contexto !== "remito") {
             builder.enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
           }
 
@@ -635,13 +636,14 @@
         }
       }
 
-      function callbackPicker(data, tipo, contexto, combinado) {
+      function callbackPicker(data, contexto) {
         if (data.action === google.picker.Action.PICKED) {
           if (contexto === "remito") {
             const archivo = data.docs[0];
             if (archivo) asignarArchivoPicker("inputRemitoLink", "preview_remito_link", archivo);
-          } else if (combinado) {
-            // Primer archivo elegido → antes, segundo → después.
+          } else {
+            // Primer archivo elegido → antes, segundo → después. Si solo
+            // elegiste uno, se completa nada más "antes".
             const tipos = ["antes", "despues"];
             data.docs.slice(0, 2).forEach((archivo, i) => {
               const campos = CAMPOS_PICKER[`${contexto}|${tipos[i]}`];
@@ -652,33 +654,14 @@
                 if (hiddenEl) hiddenEl.value = url;
               }
             });
-          } else {
-            const archivo = data.docs[0];
-            const campos = CAMPOS_PICKER[`${contexto}|${tipo}`];
-            if (archivo && campos) {
-              const url = asignarArchivoPicker(campos.input, campos.preview, archivo);
-              // El campo hidden solo existe en el formulario "nuevo"; lo
-              // mantenemos sincronizado por si en el futuro se usa como
-              // fuente independiente.
-              if (contexto === "nuevo") {
-                const hiddenEl = document.getElementById(tipo === "antes" ? "link_antes" : "link_despues");
-                if (hiddenEl) hiddenEl.value = url;
-              }
-            }
           }
         }
 
         // El picker terminó (se eligió algo o se canceló): si veníamos de un
         // modal (Editar o Remito), lo volvemos a mostrar con los valores ya
-        // actualizados. Esto pasa UNA sola vez por viaje a Drive, incluso en
-        // el modo combinado (antes + después juntos).
+        // actualizados.
         const modal = modalDeContexto(contexto);
         if (modal) modal.show();
-
-        // Red de seguridad: por si el dispose() del picker tarda o deja
-        // algún resto invisible bloqueando clics, lo forzamos a sacar del
-        // DOM un instante después.
-        setTimeout(limpiarRestosPicker, 300);
       }
 
       function limpiarRestosPicker() {
@@ -687,7 +670,7 @@
 
       // Atajo para el botón "Elegir de Drive" del link de Remito.
       function abrirPickerRemito() {
-        abrirPicker(null, "remito", false);
+        abrirPicker("remito");
       }
 
       let db = {}; // { "NOMBRE ZONA": [ {fila, fecha, codigoTienda, tarea, repuesto, foto, remito}, ... ] }
