@@ -994,6 +994,10 @@
 
         fd.append("action", modo === "editar" ? "edit_tarea" : "add_tarea");
 
+        // Si no se cargó un repuesto, guardamos "No" por defecto.
+        const repuestoVal = (fd.get("repuesto") || "").toString().trim();
+        fd.set("repuesto", repuestoVal ? repuestoVal : "No");
+
         // Combinamos Foto Antes / Foto Después en un solo campo "foto"
         const antesVal = form.querySelector(".input-foto-antes").value.trim();
         const despuesVal = form.querySelector(".input-foto-despues").value.trim();
