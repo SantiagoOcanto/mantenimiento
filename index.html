@@ -510,6 +510,12 @@
         "editar|despues": { input: "editFotoDespues", preview: "preview_despues_editar" }
       };
 
+      // Recuerda, por contexto ("nuevo" | "editar" | "remito"), el ID de la
+      // carpeta de Drive donde se eligió el último archivo. Así, al volver a
+      // abrir el picker para el segundo archivo (ej: "después"), se abre
+      // directamente en esa misma carpeta en vez de en la raíz de Drive.
+      const ultimaCarpetaPorContexto = {};
+
       // Instancia de modal de Bootstrap que hay que ocultar/mostrar según el
       // contexto ("nuevo" no tiene modal, es la pestaña de siempre).
       function modalDeContexto(contexto) {
@@ -588,7 +594,7 @@
         try {
           const vista = new google.picker.DocsView(google.picker.ViewId.DOCS)
             .setIncludeFolders(true)
-            .setParent("root")
+            .setParent(ultimaCarpetaPorContexto[contexto] || "root")
             .setSelectFolderEnabled(false);
 
           let pickerInstance = null;
@@ -640,7 +646,10 @@
         if (data.action === google.picker.Action.PICKED) {
           if (contexto === "remito") {
             const archivo = data.docs[0];
-            if (archivo) asignarArchivoPicker("inputRemitoLink", "preview_remito_link", archivo);
+            if (archivo) {
+              asignarArchivoPicker("inputRemitoLink", "preview_remito_link", archivo);
+              guardarCarpetaDeArchivo(contexto, archivo);
+            }
           } else {
             // Antes de asignar, vemos qué campo (antes/después) ya tiene
             // algo cargado. Los archivos elegidos se destinan primero a los
@@ -667,6 +676,7 @@
                 const hiddenEl = document.getElementById(tipo === "antes" ? "link_antes" : "link_despues");
                 if (hiddenEl) hiddenEl.value = url;
               }
+              guardarCarpetaDeArchivo(contexto, archivo);
             });
           }
         }
@@ -680,6 +690,19 @@
 
       function limpiarRestosPicker() {
         document.querySelectorAll(".picker-dialog-bg, .picker-dialog").forEach((el) => el.remove());
+      }
+
+      // Guarda la carpeta de Drive donde estaba el archivo recién elegido,
+      // para que la próxima vez que se abra el picker en este mismo
+      // contexto ("nuevo", "editar" o "remito") arranque ahí directamente.
+      function guardarCarpetaDeArchivo(contexto, archivo) {
+        try {
+          const parentId = archivo[google.picker.Document.PARENT_ID];
+          if (parentId) ultimaCarpetaPorContexto[contexto] = parentId;
+        } catch (error) {
+          // Si por algún motivo el picker no informa la carpeta padre,
+          // simplemente seguimos abriendo en la raíz la próxima vez.
+        }
       }
 
       // Atajo para el botón "Elegir de Drive" del link de Remito.
