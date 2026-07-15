@@ -235,6 +235,11 @@
 
           <input type="hidden" name="hoja" id="hojaNuevoHidden" />
 
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="chkVariasTareas" onchange="toggleModoVarias()">
+            <label class="form-check-label small fw-bold" for="chkVariasTareas">Cargar varias tareas a la vez (una por línea)</label>
+          </div>
+
           <label class="small fw-bold">Tarea:</label>
           <input
             type="text"
@@ -246,6 +251,17 @@
             required
           />
           <datalist id="sugerenciasTarea"></datalist>
+
+          <textarea
+            id="textareaTareasNuevo"
+            class="form-control"
+            rows="5"
+            style="display: none"
+            placeholder="Una tarea por línea, ej:&#10;Cambio de lámpara&#10;Pintura pared&#10;Ajuste de puerta"
+          ></textarea>
+          <div class="small text-muted mb-2" id="hintVarias" style="display: none">
+            Se va a crear una tarea por cada línea, todas con el mismo local, fecha, repuesto y fotos.
+          </div>
 
           <label class="small fw-bold">Repuesto:</label>
           <input
@@ -753,6 +769,23 @@
         actualizarSugerenciasTarea();
       }
 
+      // Alterna entre cargar una sola tarea (input de siempre) o varias de
+      // una vez (textarea, una tarea por línea). El resto del formulario
+      // (tienda, fecha, repuesto, fotos) es común a todas las líneas.
+      function toggleModoVarias() {
+        const varias = document.getElementById("chkVariasTareas").checked;
+        const inputUnico = document.getElementById("inputTareaNuevo");
+        const textareaVarias = document.getElementById("textareaTareasNuevo");
+        const hint = document.getElementById("hintVarias");
+
+        inputUnico.style.display = varias ? "none" : "block";
+        textareaVarias.style.display = varias ? "block" : "none";
+        hint.style.display = varias ? "block" : "none";
+
+        inputUnico.required = !varias;
+        inputUnico.value = "";
+      }
+
       function verTab(n) {
         document.getElementById("cont1").style.display = n === 1 ? "block" : "none";
         document.getElementById("cont4").style.display = n === 4 ? "block" : "none";
@@ -1001,35 +1034,67 @@
         e.preventDefault();
         const form = e.target;
         const btn = form.querySelector('button[type="submit"]');
-        const fd = new FormData(form);
+        const textoOriginalBtn = btn.innerText;
 
         const fechaInput = document.getElementById(modo === "editar" ? "editFecha" : "fechaNuevo");
 
         if (modo === "nuevo") {
           // Al crear una tarea la fecha sigue siendo obligatoria.
           if (!fechaInput || !fechaInput.value) { alert("Fecha inválida"); return; }
-          fd.set("fecha_manual", fechaInput.value); // "yyyy-mm-dd"
-        } else {
-          // Al editar, la fecha es opcional: si no se tocó (o se borró),
-          // no se envía y el backend conserva la fecha original de carga.
-          fd.set("fecha_manual", fechaInput && fechaInput.value ? fechaInput.value : "");
         }
-
-        fd.append("action", modo === "editar" ? "edit_tarea" : "add_tarea");
-
-        // Si no se cargó un repuesto, guardamos "No" por defecto.
-        const repuestoVal = (fd.get("repuesto") || "").toString().trim();
-        fd.set("repuesto", repuestoVal ? repuestoVal : "No");
 
         // Combinamos Foto Antes / Foto Después en un solo campo "foto"
         const antesVal = form.querySelector(".input-foto-antes").value.trim();
         const despuesVal = form.querySelector(".input-foto-despues").value.trim();
-        fd.append("foto", combinarFotos(antesVal, despuesVal));
+        const fotoCombinada = combinarFotos(antesVal, despuesVal);
+
+        // Modo "varias tareas": solo existe en el formulario Nuevo. Cada
+        // línea del textarea se manda como una tarea individual, todas con
+        // el mismo local/fecha/repuesto/fotos ya cargados en el formulario.
+        const modoVarias = modo === "nuevo" && document.getElementById("chkVariasTareas").checked;
+        let listaTareas = [""]; // en modo normal, un solo "envío" con la tarea del input
+
+        if (modoVarias) {
+          const texto = document.getElementById("textareaTareasNuevo").value;
+          listaTareas = texto.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+          if (listaTareas.length === 0) {
+            alert("Escribí al menos una tarea (una por línea).");
+            return;
+          }
+        }
+
+        // Arma el FormData base (tienda, fecha, repuesto, fotos) una sola
+        // vez; el campo "tarea" se pisa en cada envío del lote.
+        function armarFormData(textoTarea) {
+          const fd = new FormData(form);
+          if (modo === "nuevo") {
+            fd.set("fecha_manual", fechaInput.value); // "yyyy-mm-dd"
+          } else {
+            // Al editar, la fecha es opcional: si no se tocó (o se borró),
+            // no se envía y el backend conserva la fecha original de carga.
+            fd.set("fecha_manual", fechaInput && fechaInput.value ? fechaInput.value : "");
+          }
+          fd.append("action", modo === "editar" ? "edit_tarea" : "add_tarea");
+
+          if (modoVarias) fd.set("tarea", textoTarea);
+
+          // Si no se cargó un repuesto, guardamos "No" por defecto.
+          const repuestoVal = (fd.get("repuesto") || "").toString().trim();
+          fd.set("repuesto", repuestoVal ? repuestoVal : "No");
+
+          fd.append("foto", fotoCombinada);
+          return fd;
+        }
 
         btn.disabled = true;
         btn.innerText = "...";
         try {
-          await fetch(scriptURL, { method: "POST", body: fd });
+          for (let i = 0; i < listaTareas.length; i++) {
+            if (modoVarias) btn.innerText = `Guardando ${i + 1} de ${listaTareas.length}...`;
+            const fd = armarFormData(listaTareas[i]);
+            await fetch(scriptURL, { method: "POST", body: fd });
+          }
+
           if (modo === "editar") {
             modalEdit.hide();
           } else {
@@ -1037,6 +1102,8 @@
             document.getElementById("fechaNuevo").value = obtenerFechaActual();
             document.getElementById("preview_antes_nuevo").innerText = "";
             document.getElementById("preview_despues_nuevo").innerText = "";
+            document.getElementById("textareaTareasNuevo").value = "";
+            toggleModoVarias(); // el checkbox se resetea con form.reset(); sincronizamos input/textarea
             onCambioTiendaNuevo();
           }
           await cargar();
@@ -1044,7 +1111,7 @@
           alert("Error al guardar.");
         } finally {
           btn.disabled = false;
-          btn.innerText = modo === "editar" ? "ACTUALIZAR" : "GUARDAR TAREA";
+          btn.innerText = textoOriginalBtn;
         }
       }
 
