@@ -642,15 +642,29 @@
             const archivo = data.docs[0];
             if (archivo) asignarArchivoPicker("inputRemitoLink", "preview_remito_link", archivo);
           } else {
-            // Primer archivo elegido → antes, segundo → después. Si solo
-            // elegiste uno, se completa nada más "antes".
-            const tipos = ["antes", "despues"];
-            data.docs.slice(0, 2).forEach((archivo, i) => {
-              const campos = CAMPOS_PICKER[`${contexto}|${tipos[i]}`];
+            // Antes de asignar, vemos qué campo (antes/después) ya tiene
+            // algo cargado. Los archivos elegidos se destinan primero a los
+            // campos VACÍOS, en orden; solo si ya están los dos completos
+            // se vuelve a pisar empezando por "antes". Así, si "antes" ya
+            // tenía una foto, el próximo archivo elegido va a "después" en
+            // vez de pisar "antes".
+            const camposAntes = CAMPOS_PICKER[`${contexto}|antes`];
+            const camposDespues = CAMPOS_PICKER[`${contexto}|despues`];
+            const valorAntes = document.getElementById(camposAntes.input).value.trim();
+            const valorDespues = document.getElementById(camposDespues.input).value.trim();
+
+            let tiposDestino = [];
+            if (!valorAntes) tiposDestino.push("antes");
+            if (!valorDespues) tiposDestino.push("despues");
+            if (tiposDestino.length === 0) tiposDestino = ["antes", "despues"];
+
+            data.docs.slice(0, tiposDestino.length).forEach((archivo, i) => {
+              const tipo = tiposDestino[i];
+              const campos = CAMPOS_PICKER[`${contexto}|${tipo}`];
               if (!campos) return;
               const url = asignarArchivoPicker(campos.input, campos.preview, archivo);
               if (contexto === "nuevo") {
-                const hiddenEl = document.getElementById(tipos[i] === "antes" ? "link_antes" : "link_despues");
+                const hiddenEl = document.getElementById(tipo === "antes" ? "link_antes" : "link_despues");
                 if (hiddenEl) hiddenEl.value = url;
               }
             });
