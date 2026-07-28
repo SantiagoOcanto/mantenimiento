@@ -394,6 +394,17 @@
               <div id="preview_despues_editar" class="small text-muted mb-2"></div>
               <input type="text" id="editFotoDespues" class="form-control input-foto-despues mb-3" placeholder="https://drive.google.com/... (o pegalo a mano)" />
 
+              <label class="small fw-bold">Remito:</label>
+              <input type="text" id="editRemitoCodigo" class="form-control" placeholder="Ej: R-00123 (vacío = Pendiente)" />
+              <div class="small text-muted mb-2" style="margin-top:-4px;">Corregí acá si se asoció un Remito equivocado. Dejalo vacío para volver a "Pendiente".</div>
+
+              <div class="small text-muted mb-1">Link del Remito en Drive (opcional):</div>
+              <button type="button" class="btn btn-outline-secondary w-100 mb-1" onclick="abrirPicker('editarRemito')">
+                <i class="bi bi-folder2-open"></i> Elegir de Drive
+              </button>
+              <div id="preview_remito_editar" class="small text-muted mb-2"></div>
+              <input type="text" id="editRemitoLink" class="form-control mb-3" placeholder="https://drive.google.com/... (o elegí con el botón de arriba)" />
+
               <button type="submit" class="btn-main">ACTUALIZAR</button>
             </form>
           </div>
@@ -511,6 +522,22 @@
         return { codigo: remitoStr.trim(), link: "" };
       }
 
+      // CORRECCIÓN (bug de fecha "un día antes"): "yyyy-mm-dd" es un string
+      // de fecha SIN hora. Si se lo pasás a `new Date(...)`, JavaScript lo
+      // interpreta como medianoche UTC. Después, `.getDate()`/`.getMonth()`
+      // muestran esa fecha convertida al huso horario del NAVEGADOR (acá,
+      // Argentina = UTC-3), y medianoche UTC menos 3 horas cae en el día
+      // ANTERIOR. Por eso una tarea cargada el 28 se veía como 27. La forma
+      // correcta de mostrar el día/mes es leer el string directamente, sin
+      // pasar nunca por un objeto Date.
+      function formatearFechaCorta(fechaStr) {
+        if (!fechaStr) return "";
+        const partes = fechaStr.split("-"); // ["yyyy", "mm", "dd"]
+        if (partes.length !== 3) return "";
+        const [, mes, dia] = partes;
+        return `${dia}/${mes}`;
+      }
+
       // ============================================================
       // GOOGLE PICKER API
       // (pickerApiLoaded / onGapiLoaded se definen en el <script> de más
@@ -535,7 +562,7 @@
       // Instancia de modal de Bootstrap que hay que ocultar/mostrar según el
       // contexto ("nuevo" no tiene modal, es la pestaña de siempre).
       function modalDeContexto(contexto) {
-        if (contexto === "editar") return modalEdit;
+        if (contexto === "editar" || contexto === "editarRemito") return modalEdit;
         if (contexto === "remito") return modalRemito;
         return null;
       }
@@ -552,8 +579,8 @@
 
       // Pide la API Key + token OAuth al backend (vía fetch, NO google.script.run,
       // porque este HTML no se sirve desde Apps Script/HtmlService) y abre el picker.
-      // contexto: "nuevo" | "editar" | "remito" — indica qué formulario hay
-      // que completar. combinado: true para elegir antes+después juntos.
+      // contexto: "nuevo" | "editar" | "remito" | "editarRemito" — indica qué
+      // formulario hay que completar. combinado: true para elegir antes+después juntos.
       async function abrirPicker(contexto) {
         // Si viene de un modal (Editar o Remito), lo cerramos ANTES de abrir
         // el picker (en vez de pelear con el z-index, que en celulares no es
@@ -642,10 +669,10 @@
               setTimeout(limpiarRestosPicker, 300);
             });
 
-          // Los archivos de "remito" son de a uno; las fotos/videos de
-          // tareas siempre se piden de a dos (antes + después) en un solo
-          // viaje a Drive.
-          if (contexto !== "remito") {
+          // Los archivos de "remito" y "editarRemito" son de a uno; las
+          // fotos/videos de tareas siempre se piden de a dos (antes +
+          // después) en un solo viaje a Drive.
+          if (contexto !== "remito" && contexto !== "editarRemito") {
             builder.enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
           }
 
@@ -660,10 +687,13 @@
 
       function callbackPicker(data, contexto) {
         if (data.action === google.picker.Action.PICKED) {
-          if (contexto === "remito") {
+          if (contexto === "remito" || contexto === "editarRemito") {
+            const destino = contexto === "remito"
+              ? { input: "inputRemitoLink", preview: "preview_remito_link" }
+              : { input: "editRemitoLink", preview: "preview_remito_editar" };
             const archivo = data.docs[0];
             if (archivo) {
-              asignarArchivoPicker("inputRemitoLink", "preview_remito_link", archivo);
+              asignarArchivoPicker(destino.input, destino.preview, archivo);
               guardarCarpetaDeArchivo(contexto, archivo);
             }
           } else {
@@ -830,13 +860,13 @@
         const pendiente = esRemitoPendiente(t.remito);
         const claveSel = `${t.hoja}||${t.fila}`;
         const marcado = seleccionadas.has(claveSel);
-        const f = t.fecha ? new Date(t.fecha) : null;
-        const fLab = f ? `${f.getDate().toString().padStart(2, "0")}/${(f.getMonth() + 1).toString().padStart(2, "0")}` : "";
+        const fLab = formatearFechaCorta(t.fecha);
 
         const paramTarea = (t.tarea || "").replace(/'/g, "\\'");
         const paramCodigo = (t.codigoTienda || "").toString().replace(/'/g, "\\'");
         const paramRepuesto = (t.repuesto || "").replace(/'/g, "\\'");
         const paramFoto = (t.foto || "").replace(/'/g, "\\'");
+        const paramRemito = (t.remito || "").replace(/'/g, "\\'");
         const paramHoja = t.hoja.replace(/'/g, "\\'");
         const tiendaInfo = buscarTiendaPorCodigo(t.codigoTienda);
         const tiendaLabel = tiendaInfo ? `${t.codigoTienda} - ${tiendaInfo.nombre}` : t.codigoTienda;
@@ -866,7 +896,7 @@
               </div>
             </div>
             <div class="text-end d-flex flex-column align-items-end gap-2">
-              <i class="bi bi-pencil-square text-muted" style="cursor:pointer" onclick="abrirEditor('${paramHoja}', ${t.fila}, '${paramCodigo}', '${t.fecha}', '${paramTarea}', '${paramRepuesto}', '${paramFoto}')"></i>
+              <i class="bi bi-pencil-square text-muted" style="cursor:pointer" onclick="abrirEditor('${paramHoja}', ${t.fila}, '${paramCodigo}', '${t.fecha}', '${paramTarea}', '${paramRepuesto}', '${paramFoto}', '${paramRemito}')"></i>
               <i class="bi bi-trash3 text-danger" style="cursor:pointer" onclick="eliminarTarea('${paramHoja}', ${t.fila})"></i>
             </div>
           </div>`;
@@ -908,7 +938,11 @@
           if (filtradas.length === 0) return;
 
           filtradas.sort((a, b) => {
-            if (criterioOrden === "fecha") return new Date(b.fecha) - new Date(a.fecha);
+            // Comparación directa de strings "yyyy-mm-dd": ese formato ya
+            // ordena cronológicamente igual que alfabéticamente, así que no
+            // hace falta pasar por new Date() (que además arrastraría el
+            // mismo problema de huso horario que se corrigió en fLab).
+            if (criterioOrden === "fecha") return (b.fecha || "").localeCompare(a.fecha || "");
             return b.fila - a.fila;
           });
 
@@ -1048,6 +1082,17 @@
         const despuesVal = form.querySelector(".input-foto-despues").value.trim();
         const fotoCombinada = combinarFotos(antesVal, despuesVal);
 
+        // El Remito solo se edita desde el modal Editar (al crear una tarea
+        // nueva siempre arranca en "Pendiente" y se asigna después,
+        // agrupando). Si el código queda vacío, lo mandamos como
+        // "Pendiente" (mismo default que usa el backend al crear).
+        let remitoCombinado = null;
+        if (modo === "editar") {
+          const remitoCodigoVal = document.getElementById("editRemitoCodigo").value.trim();
+          const remitoLinkVal = document.getElementById("editRemitoLink").value.trim();
+          remitoCombinado = combinarRemito(remitoCodigoVal || "Pendiente", remitoLinkVal);
+        }
+
         // Modo "varias tareas": solo existe en el formulario Nuevo. Cada
         // línea del textarea se manda como una tarea individual, todas con
         // el mismo local/fecha/repuesto/fotos ya cargados en el formulario.
@@ -1083,6 +1128,11 @@
           fd.set("repuesto", repuestoVal ? repuestoVal : "No");
 
           fd.append("foto", fotoCombinada);
+
+          if (modo === "editar" && remitoCombinado !== null) {
+            fd.append("remito", remitoCombinado);
+          }
+
           return fd;
         }
 
@@ -1146,7 +1196,7 @@
         datalist.innerHTML = [...tareasUnicas].map((t) => `<option value="${t.replace(/"/g, '&quot;')}"></option>`).join("");
       }
 
-      function abrirEditor(hoja, fila, codigo, fecha, tarea, repuesto, foto) {
+      function abrirEditor(hoja, fila, codigo, fecha, tarea, repuesto, foto, remito) {
         document.getElementById("editId").value = fila;
         document.getElementById("editHoja").value = hoja;
 
@@ -1164,6 +1214,16 @@
         document.getElementById("editFotoDespues").value = despues;
         document.getElementById("preview_antes_editar").innerText = "";
         document.getElementById("preview_despues_editar").innerText = "";
+
+        // Precargamos el Remito actual para poder corregirlo. Si está
+        // "Pendiente" (el default de una tarea recién creada), dejamos el
+        // campo de código vacío para que quede claro que todavía no tiene
+        // uno asignado, en vez de mostrar la palabra "Pendiente" tipeada.
+        const { codigo: remitoCodigo, link: remitoLink } = separarRemito(remito);
+        document.getElementById("editRemitoCodigo").value =
+          remitoCodigo.toLowerCase() === "pendiente" ? "" : remitoCodigo;
+        document.getElementById("editRemitoLink").value = remitoLink;
+        document.getElementById("preview_remito_editar").innerText = "";
 
         modalEdit.show();
       }
