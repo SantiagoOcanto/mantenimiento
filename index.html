@@ -210,6 +210,7 @@
     <div class="tab-nav">
       <button id="t1" class="active" onclick="verTab(1)">NUEVO</button>
       <button id="t4" onclick="verTab(4)">TAREAS</button>
+      <button id="t5" onclick="verTab(5)">CHECKLIST</button>
     </div>
 
     <div id="cont1">
@@ -355,6 +356,30 @@
       </div>
     </div>
 
+    <div id="cont5" style="display: none">
+      <div class="card-custom">
+        <!-- IMPORTANTE: esta pestaña NO guarda nada en el Google Sheet.
+             Es un formulario efímero: se completa, se arma un mensaje de
+             texto y se abre WhatsApp con ese texto ya cargado (vos tocás
+             "Enviar" del lado de WhatsApp). Si recargás la página antes de
+             enviar, se pierde lo que hayas marcado. -->
+        <label class="small fw-bold">Tienda:</label>
+        <select id="selectTiendaChecklist" class="form-select mb-2"></select>
+
+        <label class="small fw-bold">Fecha:</label>
+        <input type="date" id="fechaChecklist" class="form-control mb-3" />
+
+        <div id="listaChecklist"></div>
+
+        <button type="button" class="btn-main mt-2" style="background: #25d366;" onclick="enviarChecklistWhatsapp()">
+          <i class="bi bi-whatsapp"></i> ENVIAR POR WHATSAPP
+        </button>
+        <button type="button" class="btn-fino w-100 mt-2" onclick="limpiarChecklist()">
+          <i class="bi bi-arrow-counterclockwise"></i> Limpiar checklist
+        </button>
+      </div>
+    </div>
+
     <div class="modal fade" id="modalEditar" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius: 20px">
@@ -456,25 +481,148 @@
     <script>
       const scriptURL = "https://script.google.com/macros/s/AKfycbwH2vbCB_-ZgrxistaVElX-EZV7htHN7L1QntGz1L1fKGsal88GmYzBWeK30SUBkxMWNg/exec";
 
+      // Antes había 5 "zonas" que agrupaban 2 tiendas cada una (ej.
+      // "AVELLANEDA - PATIO BULLRICH" mezclaba las tiendas Avellaneda y
+      // Patio Bullrich). Ahora cada tienda es su propia zona/etiqueta: se
+      // simplifica a un solo nombre por tienda, sin agrupar de a dos.
       const ZONAS = [
-        "AVELLANEDA - PATIO BULLRICH",
-        "ALCORTA - ALTO PALERMO",
-        "DOT BAIRES - UNICENTER",
-        "FLORIDA - ABASTO",
-        "SANTA FE"
+        "Avellaneda",
+        "Patio Bullrich",
+        "Alcorta",
+        "Alto Palermo",
+        "Dot Baires",
+        "Unicenter",
+        "Florida",
+        "Abasto",
+        "Santa Fe"
       ];
 
-      // Tiendas reales con su código y la zona/hoja a la que pertenecen
+      // ============================================================
+      // CHECKLIST DE MANTENIMIENTO PREVENTIVO (pestaña "CHECKLIST")
+      // ============================================================
+      // Esta checklist es INDEPENDIENTE del sistema de tareas: no se lee
+      // ni se guarda en NUEVACARGADEINCIDENCIAS ni en ninguna otra hoja.
+      // Se completa acá, se arma un mensaje de texto y se manda por
+      // WhatsApp (link wa.me) directo, sin pasar por el backend.
+
+      // Reemplazá esto por el número de WhatsApp de tu jefe: código de
+      // país + número, TODO junto, sin "+", sin espacios ni guiones.
+      // Ejemplo Argentina, celular 11 2233-4455 → "5491122334455"
+      // (54 = país, 9 = prefijo celular AR, 11 = área, resto = número).
+      const WHATSAPP_JEFE = "549XXXXXXXXXX";
+
+      const CHECKLIST_ITEMS = [
+        "Sector de Ventas Probadores Damas: luz/espejo/cortina/perchero",
+        "Sector de Ventas Probadores Caballeros: luz/espejo/cortina/perchero",
+        "Sector de Ventas Probadores Niños: luz/espejo/cortina/perchero",
+        "Mostrador Cajas Sra: tomas flojos/tapas/cajones/guías/cerraduras/tira apertura",
+        "Mostrador Cajas Cro: tomas flojos/tapas/cajones/guías/cerraduras/tira apertura",
+        "Mostrador Cajas Niño: tomas flojos/tapas/cajones/guías/cerraduras/tira apertura",
+        "Paredes/Zócalos/Mueble perimetral/Islas/bases/mesas",
+        "Almacén: módulos colgados/estantes/cerámicos rotos",
+        "Almacén: carros/ruedas/cerraduras/picaporte/estantes/pared/zócalos",
+        "Almacén externo: ídem anteriores / matafuegos colgados",
+        "Comedor: acceso puertas/muebles/heladera/reloj/bacha/estantes",
+        "Comedor: dispenser, control de funcionamiento",
+        "Oficina: acceso/mesa/silla/tomas",
+        "Baños Sra: bancos/mochila-inodoro/desagües-lavamanos/espejo",
+        "Baños Caballeros: bancos/mochila-inodoro/desagües-lavamanos/espejo",
+        "Baños: control dispenser funcionando (toalla/papel higiénico/jabón)",
+        "Cuarto Aire: acceso/puerta/cerradura/picaporte",
+        "Cuarto Limpieza: ídem anterior",
+        "Escalera: acceso a pisos/barandas",
+        "Fachada",
+        "Matafuegos: revisar que estén colgados y vigentes en TODOS los sectores"
+      ];
+
+      function renderChecklist() {
+        const cont = document.getElementById("listaChecklist");
+        cont.innerHTML = CHECKLIST_ITEMS.map((item, i) => `
+          <div class="mb-2 p-2" style="border:1px solid #eee; border-radius:12px;">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="chk_${i}">
+              <label class="form-check-label small" for="chk_${i}">${item}</label>
+            </div>
+            <input type="text" class="form-control form-control-sm mt-1" id="nota_${i}" placeholder="Nota (opcional, solo si encontraste algo raro)" />
+            <div class="d-flex align-items-center flex-wrap gap-2 mt-1">
+              <button type="button" class="btn btn-sm btn-outline-secondary" style="font-size:0.68rem; border-radius:8px;" onclick="abrirPicker('checklist_${i}')">
+                <i class="bi bi-camera"></i> Adjuntar foto/video
+              </button>
+              <span id="preview_adjunto_${i}" class="small text-muted"></span>
+            </div>
+            <input type="hidden" id="adjunto_${i}" />
+          </div>
+        `).join("");
+      }
+
+      function limpiarChecklist() {
+        if (!confirm("¿Reiniciar la checklist? Se van a borrar todas las marcas, notas y adjuntos.")) return;
+        CHECKLIST_ITEMS.forEach((_, i) => {
+          document.getElementById(`chk_${i}`).checked = false;
+          document.getElementById(`nota_${i}`).value = "";
+          document.getElementById(`adjunto_${i}`).value = "";
+          document.getElementById(`preview_adjunto_${i}`).innerText = "";
+        });
+      }
+
+      // Arma el texto del mensaje, ej:
+      // 19/08/26 - Unicenter (7003)
+      //
+      // ✅ Sector de Ventas Probadores Damas...
+      // ❌ Baños Sra... — Nota: falta jabón
+      function armarMensajeChecklist() {
+        const codigo = document.getElementById("selectTiendaChecklist").value;
+        const tiendaInfo = buscarTiendaPorCodigo(codigo);
+        const nombreTienda = tiendaInfo ? tiendaInfo.nombre : "";
+
+        const fechaValor = document.getElementById("fechaChecklist").value; // "yyyy-mm-dd"
+        const [anio, mes, dia] = fechaValor.split("-");
+        const fechaCorta = `${dia}/${mes}/${anio.slice(2)}`; // "dd/mm/aa"
+
+        const lineas = [`${fechaCorta} - ${nombreTienda} (${codigo})`, ""];
+
+        CHECKLIST_ITEMS.forEach((item, i) => {
+          const marcado = document.getElementById(`chk_${i}`).checked;
+          const nota = document.getElementById(`nota_${i}`).value.trim();
+          const adjunto = document.getElementById(`adjunto_${i}`).value.trim();
+          let linea = `${marcado ? "✅" : "❌"} ${item}`;
+          if (nota) linea += ` — Nota: ${nota}`;
+          if (adjunto) linea += `\n   📎 ${adjunto}`;
+          lineas.push(linea);
+        });
+
+        return lineas.join("\n");
+      }
+
+      function enviarChecklistWhatsapp() {
+        const codigo = document.getElementById("selectTiendaChecklist").value;
+        if (!codigo) { alert("Elegí una tienda."); return; }
+        if (!document.getElementById("fechaChecklist").value) { alert("Elegí una fecha."); return; }
+
+        const sinMarcar = CHECKLIST_ITEMS.filter((_, i) => !document.getElementById(`chk_${i}`).checked).length;
+        if (sinMarcar > 0) {
+          const seguir = confirm(`Hay ${sinMarcar} ítem(s) sin marcar todavía. ¿Enviar igual?`);
+          if (!seguir) return;
+        }
+
+        const mensaje = armarMensajeChecklist();
+        const url = `https://wa.me/${WHATSAPP_JEFE}?text=${encodeURIComponent(mensaje)}`;
+        window.open(url, "_blank");
+      }
+
+      // Tiendas reales con su código. "hoja" ahora es igual a "nombre":
+      // cada tienda es su propia zona (antes dos tiendas compartían una
+      // zona combinada, ej. "AVELLANEDA - PATIO BULLRICH").
       const TIENDAS = [
-        { codigo: "7000", nombre: "Avellaneda", hoja: "AVELLANEDA - PATIO BULLRICH" },
-        { codigo: "7046", nombre: "Patio Bullrich", hoja: "AVELLANEDA - PATIO BULLRICH" },
-        { codigo: "7036", nombre: "Alcorta", hoja: "ALCORTA - ALTO PALERMO" },
-        { codigo: "7002", nombre: "Alto Palermo", hoja: "ALCORTA - ALTO PALERMO" },
-        { codigo: "7047", nombre: "Dot Baires", hoja: "DOT BAIRES - UNICENTER" },
-        { codigo: "7003", nombre: "Unicenter", hoja: "DOT BAIRES - UNICENTER" },
-        { codigo: "7008", nombre: "Florida", hoja: "FLORIDA - ABASTO" },
-        { codigo: "7005", nombre: "Abasto", hoja: "FLORIDA - ABASTO" },
-        { codigo: "7004", nombre: "Santa Fe", hoja: "SANTA FE" }
+        { codigo: "7000", nombre: "Avellaneda", hoja: "Avellaneda" },
+        { codigo: "7046", nombre: "Patio Bullrich", hoja: "Patio Bullrich" },
+        { codigo: "7036", nombre: "Alcorta", hoja: "Alcorta" },
+        { codigo: "7002", nombre: "Alto Palermo", hoja: "Alto Palermo" },
+        { codigo: "7047", nombre: "Dot Baires", hoja: "Dot Baires" },
+        { codigo: "7003", nombre: "Unicenter", hoja: "Unicenter" },
+        { codigo: "7008", nombre: "Florida", hoja: "Florida" },
+        { codigo: "7005", nombre: "Abasto", hoja: "Abasto" },
+        { codigo: "7004", nombre: "Santa Fe", hoja: "Santa Fe" }
       ];
 
       // CORRECCIÓN: comparamos siempre como texto. El código de tienda puede
@@ -579,8 +727,11 @@
 
       // Pide la API Key + token OAuth al backend (vía fetch, NO google.script.run,
       // porque este HTML no se sirve desde Apps Script/HtmlService) y abre el picker.
-      // contexto: "nuevo" | "editar" | "remito" | "editarRemito" — indica qué
-      // formulario hay que completar. combinado: true para elegir antes+después juntos.
+      // contexto: "nuevo" | "editar" | "remito" | "editarRemito" | "checklist_<i>"
+      // — indica qué formulario/campo hay que completar. "checklist_<i>" es
+      // el adjunto del ítem i de la pestaña CHECKLIST (no tiene modal propio,
+      // por eso modalDeContexto no lo reconoce y no intenta mostrar/ocultar
+      // nada, que es justo el comportamiento que queremos ahí).
       async function abrirPicker(contexto) {
         // Si viene de un modal (Editar o Remito), lo cerramos ANTES de abrir
         // el picker (en vez de pelear con el z-index, que en celulares no es
@@ -669,10 +820,11 @@
               setTimeout(limpiarRestosPicker, 300);
             });
 
-          // Los archivos de "remito" y "editarRemito" son de a uno; las
-          // fotos/videos de tareas siempre se piden de a dos (antes +
-          // después) en un solo viaje a Drive.
-          if (contexto !== "remito" && contexto !== "editarRemito") {
+          // Los archivos de "remito", "editarRemito" y "checklist_<i>" son
+          // de a uno; las fotos/videos de tareas siempre se piden de a dos
+          // (antes + después) en un solo viaje a Drive.
+          const esDeUnSolo = contexto === "remito" || contexto === "editarRemito" || contexto.indexOf("checklist_") === 0;
+          if (!esDeUnSolo) {
             builder.enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
           }
 
@@ -694,6 +846,15 @@
             const archivo = data.docs[0];
             if (archivo) {
               asignarArchivoPicker(destino.input, destino.preview, archivo);
+              guardarCarpetaDeArchivo(contexto, archivo);
+            }
+          } else if (contexto.indexOf("checklist_") === 0) {
+            // contexto tiene la forma "checklist_3" → el índice del ítem
+            // de la checklist es lo que viene después del guion bajo.
+            const indice = contexto.split("_")[1];
+            const archivo = data.docs[0];
+            if (archivo) {
+              asignarArchivoPicker(`adjunto_${indice}`, `preview_adjunto_${indice}`, archivo);
               guardarCarpetaDeArchivo(contexto, archivo);
             }
           } else {
@@ -774,22 +935,20 @@
       });
 
       function opcionesTiendasHTML(tiendas) {
-        // Agrupadas por zona con optgroup, para que sea fácil de ubicar visualmente
-        const porZona = {};
-        tiendas.forEach((t) => {
-          if (!porZona[t.hoja]) porZona[t.hoja] = [];
-          porZona[t.hoja].push(t);
-        });
-        return Object.keys(porZona).map((zona) => {
-          const opciones = porZona[zona].map((t) => `<option value="${t.codigo}">${t.codigo} - ${t.nombre}</option>`).join("");
-          return `<optgroup label="${zona}">${opciones}</optgroup>`;
-        }).join("");
+        // Antes agrupábamos con optgroup por zona (una zona = 2 tiendas).
+        // Ahora que cada tienda ES su propia zona, un optgroup por tienda
+        // quedaría redundante (repetiría el mismo nombre como título del
+        // grupo y como única opción adentro), así que listamos directo.
+        return tiendas.map((t) => `<option value="${t.codigo}">${t.codigo} - ${t.nombre}</option>`).join("");
       }
 
       function inicializarSelects() {
         const selTienda = document.getElementById("selectTiendaNuevo");
         selTienda.innerHTML = opcionesTiendasHTML(TIENDAS);
         onCambioTiendaNuevo(); // fija la hoja oculta según la primera tienda por defecto
+
+        document.getElementById("selectTiendaChecklist").innerHTML = opcionesTiendasHTML(TIENDAS);
+        renderChecklist();
       }
 
       function onCambioTiendaNuevo() {
@@ -819,10 +978,15 @@
       function verTab(n) {
         document.getElementById("cont1").style.display = n === 1 ? "block" : "none";
         document.getElementById("cont4").style.display = n === 4 ? "block" : "none";
+        document.getElementById("cont5").style.display = n === 5 ? "block" : "none";
         document.getElementById("t1").classList.toggle("active", n === 1);
         document.getElementById("t4").classList.toggle("active", n === 4);
+        document.getElementById("t5").classList.toggle("active", n === 5);
         if (n === 1) document.getElementById("fechaNuevo").value = obtenerFechaActual();
         if (n === 4) { renderZonasFiltro(); renderReporte(); }
+        if (n === 5 && !document.getElementById("fechaChecklist").value) {
+          document.getElementById("fechaChecklist").value = obtenerFechaActual();
+        }
       }
 
       function renderZonasFiltro() {
