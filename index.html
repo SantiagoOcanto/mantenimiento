@@ -1540,9 +1540,11 @@
 
           if (modoVarias) fd.set("tarea", textoTarea);
 
-          // Si no se cargó un repuesto, guardamos "No" por defecto.
+          // Antes, si no se cargaba un repuesto, se guardaba "No" por
+          // defecto. Ahora se manda tal cual (vacío si no se escribió
+          // nada), solo recortando espacios de más.
           const repuestoVal = (fd.get("repuesto") || "").toString().trim();
-          fd.set("repuesto", repuestoVal ? repuestoVal : "No");
+          fd.set("repuesto", repuestoVal);
 
           fd.append("foto", fotoCombinada);
 
