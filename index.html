@@ -690,10 +690,21 @@
       // cada fila (según cuántas líneas ocupa el texto envuelto), para
       // poder calcular el alto total del canvas ANTES de dibujar nada; la
       // segunda ya dibuja todo con esas medidas.
-      function generarImagenChecklist() {
-        const codigo = document.getElementById("selectTiendaChecklist").value;
+      // Junta en un solo array lo que hay cargado en el DOM para cada
+      // ítem. Se arma UNA sola vez por envío y se reutiliza tanto para
+      // guardar en la hoja como para dibujar la imagen, así los dos
+      // destinos siempre muestran exactamente lo mismo.
+      function recolectarItemsChecklist() {
+        return CHECKLIST_ITEMS.map((texto, i) => ({
+          texto,
+          marcado: document.getElementById(`chk_${i}`).checked,
+          nota: document.getElementById(`nota_${i}`).value.trim(),
+          adjunto: document.getElementById(`adjunto_${i}`).value.trim()
+        }));
+      }
+
+      function generarImagenChecklist(items, codigo, fechaValor) {
         const nombreTienda = nombreDeTienda(codigo);
-        const fechaValor = document.getElementById("fechaChecklist").value; // "yyyy-mm-dd"
         const [anio, mes, dia] = fechaValor.split("-");
         const fechaCorta = `${dia}/${mes}/${anio.slice(2)}`;
 
@@ -705,21 +716,18 @@
 
         const medidor = document.createElement("canvas").getContext("2d");
 
-        const filas = CHECKLIST_ITEMS.map((item, i) => {
-          const marcado = document.getElementById(`chk_${i}`).checked;
-          const nota = document.getElementById(`nota_${i}`).value.trim();
-
+        const filas = items.map((it) => {
           medidor.font = "bold 15px Arial";
-          const lineasItem = envolverTexto(medidor, item, ANCHO_TEXTO);
+          const lineasItem = envolverTexto(medidor, it.texto, ANCHO_TEXTO);
 
           let lineasNota = [];
-          if (nota) {
+          if (it.nota) {
             medidor.font = "italic 14px Arial";
-            lineasNota = envolverTexto(medidor, `Nota: ${nota}`, ANCHO_TEXTO);
+            lineasNota = envolverTexto(medidor, `Nota: ${it.nota}`, ANCHO_TEXTO);
           }
 
           const alto = 16 + lineasItem.length * 20 + (lineasNota.length ? lineasNota.length * 18 + 6 : 0) + 12;
-          return { item, marcado, lineasItem, lineasNota, alto };
+          return { marcado: it.marcado, lineasItem, lineasNota, alto };
         });
 
         const altoFilas = filas.reduce((acc, f) => acc + f.alto, 0);
@@ -746,7 +754,7 @@
         const marcados = filas.filter((f) => f.marcado).length;
         ctx.font = "13px Arial";
         ctx.fillStyle = "#d7e3ec";
-        ctx.fillText(`${marcados}/${CHECKLIST_ITEMS.length} ítems OK`, PADDING, 78);
+        ctx.fillText(`${marcados}/${items.length} ítems OK`, PADDING, 78);
 
         // Filas
         let y = ALTO_HEADER;
@@ -802,6 +810,27 @@
         URL.revokeObjectURL(url);
       }
 
+      // Manda los ítems a Code.gs para que queden guardados en la hoja
+      // CHECKLIST_DIARIO (ver accionGuardarChecklist). Devuelve la
+      // respuesta ya parseada, o null si falló la conexión.
+      async function guardarChecklistEnSheet(codigo, zona, fechaValor, items) {
+        const fd = new FormData();
+        fd.append("action", "guardar_checklist");
+        fd.append("clave", CLAVE_APP_GUARDADA);
+        fd.append("codigo_tienda", codigo);
+        fd.append("zona", zona);
+        fd.append("fecha", fechaValor);
+        fd.append("items", JSON.stringify(items));
+
+        try {
+          const resp = await fetch(scriptURL, { method: "POST", body: fd });
+          return await resp.json();
+        } catch (error) {
+          console.error("Error guardando el checklist en la hoja:", error);
+          return null;
+        }
+      }
+
       async function enviarChecklistWhatsapp() {
         const codigo = document.getElementById("selectTiendaChecklist").value;
         if (!codigo) { alert("Elegí una tienda."); return; }
@@ -817,10 +846,32 @@
         const btn = document.getElementById("btnEnviarChecklist");
         const textoOriginal = btn.innerText;
         btn.disabled = true;
-        btn.innerText = "Generando imagen...";
 
+        const items = recolectarItemsChecklist();
+
+        // 1) Guardar en la hoja CHECKLIST_DIARIO. Si por algún motivo
+        // falla (sin conexión, clave vencida, etc.), avisamos pero
+        // seguimos igual con la imagen: lo prioritario es que la
+        // información le llegue a tu jefe, no que se pierda el envío por
+        // un problema al guardar.
+        btn.innerText = "Guardando checklist...";
+        const dataGuardado = await guardarChecklistEnSheet(codigo, nombreDeTienda(codigo), fechaValor, items);
+
+        if (dataGuardado && dataGuardado.error === "unauthorized") {
+          btn.disabled = false;
+          btn.innerText = textoOriginal;
+          manejarSesionInvalida();
+          return;
+        }
+        if (!dataGuardado || !dataGuardado.ok) {
+          console.error("No se pudo guardar el checklist en la hoja:", dataGuardado);
+          alert("No se pudo guardar el checklist en la hoja. Se va a generar y compartir la imagen igual.");
+        }
+
+        // 2) Generar y compartir la imagen (como ya funcionaba).
+        btn.innerText = "Generando imagen...";
         try {
-          const blob = await generarImagenChecklist();
+          const blob = await generarImagenChecklist(items, codigo, fechaValor);
           const nombreArchivo = `checklist_${nombreDeTienda(codigo).replace(/\s+/g, "_")}_${fechaValor}.png`;
           const archivo = new File([blob], nombreArchivo, { type: "image/png" });
 
