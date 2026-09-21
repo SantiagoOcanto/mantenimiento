@@ -226,6 +226,7 @@
     <div class="tab-nav">
       <button id="t1" class="active" onclick="verTab(1)">NUEVO</button>
       <button id="t4" onclick="verTab(4)">TAREAS</button>
+      <button id="t6" onclick="verTab(6)">SANITARIOS</button>
       <button id="t5" onclick="verTab(5)">CHECKLIST</button>
     </div>
 
@@ -372,6 +373,101 @@
       </div>
     </div>
 
+    <div id="cont6" style="display: none">
+      <div class="card-custom">
+        <h6 class="fw-bold mb-2"><i class="bi bi-droplet-half"></i> Nuevo registro sanitario</h6>
+        <form id="formSanitario" onsubmit="prepararEnvioSanitario(event, 'nuevo')">
+          <label class="small fw-bold">Código de tienda:</label>
+          <select
+            name="codigo_tienda"
+            id="selectTiendaSanitario"
+            class="form-select"
+            onchange="onCambioTiendaSanitario()"
+            required
+          ></select>
+
+          <input type="hidden" name="hoja" id="hojaSanitarioHidden" />
+
+          <label class="small fw-bold">Tipo:</label>
+          <select name="tipo" id="tipoSanitario" class="form-select" required>
+            <option value="Canilla">Canilla</option>
+            <option value="Inodoro">Inodoro</option>
+            <option value="Lavatorio">Lavatorio</option>
+          </select>
+
+          <label class="small fw-bold">Marca:</label>
+          <input
+            type="text"
+            name="marca"
+            id="marcaSanitario"
+            class="form-control"
+            placeholder="Ej: FV"
+          />
+
+          <label class="small fw-bold">Cantidad:</label>
+          <input
+            type="number"
+            name="cantidad"
+            id="cantidadSanitario"
+            class="form-control"
+            min="1"
+            step="1"
+            value="1"
+            required
+          />
+
+          <label class="small fw-bold">Fecha:</label>
+          <input
+            type="date"
+            name="fecha_manual"
+            id="fechaSanitario"
+            class="form-control"
+            required
+          />
+
+          <label class="small fw-bold">Foto:</label>
+          <button type="button" class="btn btn-main mb-2" style="background: var(--ok-green);" onclick="abrirPicker('sanitario')">
+            <i class="bi bi-images"></i> Elegir de Drive
+          </button>
+          <div id="preview_foto_sanitario" class="small text-muted mb-2"></div>
+          <input
+            type="text"
+            id="fotoSanitarioNuevo"
+            class="form-control mb-2"
+            placeholder="https://drive.google.com/... (o pegalo a mano)"
+          />
+
+          <button type="submit" class="btn-main mt-2">GUARDAR REGISTRO</button>
+        </form>
+      </div>
+
+      <div class="card-custom">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span id="contadorSanitarios">Cargando...</span>
+          <button id="btnRecargarSanitarios" onclick="recargarManualSanitarios()">
+            <i class="bi bi-arrow-clockwise"></i> Actualizar
+          </button>
+        </div>
+
+        <div class="zonas-scroll mb-2" id="contenedorZonasFiltroSanitarios"></div>
+
+        <div class="d-flex gap-2 mb-3">
+          <div class="search-wrapper">
+            <i class="bi bi-search"></i>
+            <input
+              type="text"
+              id="inputBusquedaSanitarios"
+              class="form-control form-control-sm"
+              placeholder="Buscar por tienda, tipo o marca..."
+              onkeyup="renderSanitarios()"
+            />
+          </div>
+        </div>
+
+        <div id="listaSanitarios"></div>
+      </div>
+    </div>
+
     <div id="cont5" style="display: none">
       <div class="card-custom">
         <!-- IMPORTANTE: esta pestaña NO guarda nada en el Google Sheet.
@@ -476,6 +572,53 @@
       </div>
     </div>
 
+    <div class="modal fade" id="modalEditarSanitario" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px">
+          <div class="modal-header border-0 pb-0">
+            <h6 class="fw-bold mb-0">EDITAR REGISTRO SANITARIO</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body pt-2">
+            <form id="formEditarSanitario" onsubmit="prepararEnvioSanitario(event, 'editar')">
+              <input type="hidden" name="id" id="editSanitarioId" />
+              <input type="hidden" name="hoja" id="editSanitarioHoja" />
+
+              <label class="small fw-bold">Código de tienda:</label>
+              <select name="codigo_tienda" id="editSanitarioCodigoTienda" class="form-select" required></select>
+              <div class="small text-muted mb-2" style="margin-top:-4px;">La zona/local del registro no se puede cambiar desde aquí.</div>
+
+              <label class="small fw-bold">Tipo:</label>
+              <select name="tipo" id="editSanitarioTipo" class="form-select" required>
+                <option value="Canilla">Canilla</option>
+                <option value="Inodoro">Inodoro</option>
+                <option value="Lavatorio">Lavatorio</option>
+              </select>
+
+              <label class="small fw-bold">Marca:</label>
+              <input type="text" name="marca" id="editSanitarioMarca" class="form-control" />
+
+              <label class="small fw-bold">Cantidad:</label>
+              <input type="number" name="cantidad" id="editSanitarioCantidad" class="form-control" min="1" step="1" required />
+
+              <label class="small fw-bold">Fecha:</label>
+              <input type="date" name="fecha_manual" id="editSanitarioFecha" class="form-control" />
+              <div class="small text-muted mb-2" style="margin-top:-4px;">Podés dejarla así o cambiarla; si la borrás, se conserva la original.</div>
+
+              <label class="small fw-bold">Foto:</label>
+              <button type="button" class="btn btn-main mb-2" style="background: var(--ok-green);" onclick="abrirPicker('editarSanitario')">
+                <i class="bi bi-images"></i> Elegir de Drive
+              </button>
+              <div id="preview_foto_editarSanitario" class="small text-muted mb-2"></div>
+              <input type="text" id="editSanitarioFoto" class="form-control mb-3" placeholder="https://drive.google.com/... (o pegalo a mano)" />
+
+              <button type="submit" class="btn-main">ACTUALIZAR</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script>
       // Se define ANTES de cargar apis.google.com/js/api.js a propósito:
       // ese script llama a onGapiLoaded() apenas termina de cargar, así que
@@ -495,19 +638,19 @@
     <script src="https://apis.google.com/js/api.js" onload="onGapiLoaded()"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-      const scriptURL = "https://script.google.com/macros/s/AKfycbziyW2Wps9akZWrtK4sUCcpLpfANDNrnqrcG8W_I9th-31hbz9P2W8eAUeTo1okuLvdZA/exec";
+      const scriptURL = "https://script.google.com/macros/s/AKfycbx2LWSyp0tKq7PU5vl4TIoYfBt1xCIjU3CECk2GEfikDkzJGLrxMmUxv678iGcZsuu7Iw/exec";
 
       // ============================================================
       // ACCESO CON CONTRASEÑA (ver también CLAVE_APP en Code.gs)
       // ============================================================
       // La clave se manda en TODOS los pedidos al backend (leer, cargar,
-      // editar, borrar, agrupar remito, abrir el picker de Drive). El
-      // backend es quien realmente la valida; esta pantalla es solo la
-      // puerta de entrada. Se guarda en localStorage para no tener que
-      // volver a escribirla cada vez que se abre la web en el mismo
-      // navegador (si el backend la rechaza más adelante -por ejemplo
-      // porque cambiaste CLAVE_APP en Code.gs-, se borra sola y vuelve a
-      // pedir la pantalla de acceso).
+      // editar, borrar, agrupar remito, abrir el picker de Drive, y ahora
+      // también los registros sanitarios). El backend es quien realmente
+      // la valida; esta pantalla es solo la puerta de entrada. Se guarda en
+      // localStorage para no tener que volver a escribirla cada vez que se
+      // abre la web en el mismo navegador (si el backend la rechaza más
+      // adelante -por ejemplo porque cambiaste CLAVE_APP en Code.gs-, se
+      // borra sola y vuelve a pedir la pantalla de acceso).
       const CLAVE_STORAGE_KEY = "clave_app_mantenimiento";
       let CLAVE_APP_GUARDADA = localStorage.getItem(CLAVE_STORAGE_KEY) || "";
 
@@ -1031,17 +1174,31 @@
         "editar|despues": { input: "editFotoDespues", preview: "preview_despues_editar" }
       };
 
-      // Recuerda, por contexto ("nuevo" | "editar" | "remito"), el ID de la
-      // carpeta de Drive donde se eligió el último archivo. Así, al volver a
-      // abrir el picker para el segundo archivo (ej: "después"), se abre
-      // directamente en esa misma carpeta en vez de en la raíz de Drive.
+      // Contextos de un solo archivo cuyo destino es directo (sin par
+      // antes/después): remito, remito del editor de tareas, cada adjunto
+      // de checklist, y ahora también la foto de un registro sanitario
+      // (alta y edición).
+      const CAMPOS_PICKER_UNICO = {
+        "remito": { input: "inputRemitoLink", preview: "preview_remito_link" },
+        "editarRemito": { input: "editRemitoLink", preview: "preview_remito_editar" },
+        "sanitario": { input: "fotoSanitarioNuevo", preview: "preview_foto_sanitario" },
+        "editarSanitario": { input: "editSanitarioFoto", preview: "preview_foto_editarSanitario" }
+      };
+
+      // Recuerda, por contexto ("nuevo" | "editar" | "remito" | "sanitario"
+      // | "editarSanitario" | ...), el ID de la carpeta de Drive donde se
+      // eligió el último archivo. Así, al volver a abrir el picker para el
+      // segundo archivo (ej: "después"), se abre directamente en esa misma
+      // carpeta en vez de en la raíz de Drive.
       const ultimaCarpetaPorContexto = {};
 
       // Instancia de modal de Bootstrap que hay que ocultar/mostrar según el
-      // contexto ("nuevo" no tiene modal, es la pestaña de siempre).
+      // contexto ("nuevo" y "sanitario" no tienen modal, son pestañas de
+      // siempre visibles).
       function modalDeContexto(contexto) {
         if (contexto === "editar" || contexto === "editarRemito") return modalEdit;
         if (contexto === "remito") return modalRemito;
+        if (contexto === "editarSanitario") return modalEditSanitario;
         return null;
       }
 
@@ -1058,15 +1215,18 @@
       // Pide la API Key + token OAuth al backend (vía fetch, NO google.script.run,
       // porque este HTML no se sirve desde Apps Script/HtmlService) y abre el picker.
       // contexto: "nuevo" | "editar" | "remito" | "editarRemito" | "checklist_<i>"
-      // — indica qué formulario/campo hay que completar. "checklist_<i>" es
-      // el adjunto del ítem i de la pestaña CHECKLIST (no tiene modal propio,
-      // por eso modalDeContexto no lo reconoce y no intenta mostrar/ocultar
-      // nada, que es justo el comportamiento que queremos ahí).
+      // | "sanitario" | "editarSanitario" — indica qué formulario/campo hay
+      // que completar. "checklist_<i>" es el adjunto del ítem i de la
+      // pestaña CHECKLIST (no tiene modal propio, por eso modalDeContexto
+      // no lo reconoce y no intenta mostrar/ocultar nada, que es justo el
+      // comportamiento que queremos ahí; "sanitario" (alta) tampoco tiene
+      // modal, por el mismo motivo).
       async function abrirPicker(contexto) {
-        // Si viene de un modal (Editar o Remito), lo cerramos ANTES de abrir
-        // el picker (en vez de pelear con el z-index, que en celulares no es
-        // confiable). Los valores ya cargados no se pierden: solo se oculta
-        // la ventana, no se resetea el contenido.
+        // Si viene de un modal (Editar, Remito o Editar Sanitario), lo
+        // cerramos ANTES de abrir el picker (en vez de pelear con el
+        // z-index, que en celulares no es confiable). Los valores ya
+        // cargados no se pierden: solo se oculta la ventana, no se resetea
+        // el contenido.
         const modal = modalDeContexto(contexto);
         if (modal) modal.hide();
 
@@ -1155,10 +1315,11 @@
               setTimeout(limpiarRestosPicker, 300);
             });
 
-          // Los archivos de "remito", "editarRemito" y "checklist_<i>" son
-          // de a uno; las fotos/videos de tareas siempre se piden de a dos
-          // (antes + después) en un solo viaje a Drive.
-          const esDeUnSolo = contexto === "remito" || contexto === "editarRemito" || contexto.indexOf("checklist_") === 0;
+          // Los archivos de "remito", "editarRemito", "sanitario",
+          // "editarSanitario" y "checklist_<i>" son de a uno; las
+          // fotos/videos de tareas siempre se piden de a dos (antes +
+          // después) en un solo viaje a Drive.
+          const esDeUnSolo = !!CAMPOS_PICKER_UNICO[contexto] || contexto.indexOf("checklist_") === 0;
           if (!esDeUnSolo) {
             builder.enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
           }
@@ -1174,10 +1335,10 @@
 
       function callbackPicker(data, contexto) {
         if (data.action === google.picker.Action.PICKED) {
-          if (contexto === "remito" || contexto === "editarRemito") {
-            const destino = contexto === "remito"
-              ? { input: "inputRemitoLink", preview: "preview_remito_link" }
-              : { input: "editRemitoLink", preview: "preview_remito_editar" };
+          if (CAMPOS_PICKER_UNICO[contexto]) {
+            // Contextos de un solo archivo: remito, remito del editor de
+            // tareas, y la foto de un registro sanitario (alta o edición).
+            const destino = CAMPOS_PICKER_UNICO[contexto];
             const archivo = data.docs[0];
             if (archivo) {
               asignarArchivoPicker(destino.input, destino.preview, archivo);
@@ -1224,8 +1385,8 @@
         }
 
         // El picker terminó (se eligió algo o se canceló): si veníamos de un
-        // modal (Editar o Remito), lo volvemos a mostrar con los valores ya
-        // actualizados.
+        // modal (Editar, Remito o Editar Sanitario), lo volvemos a mostrar
+        // con los valores ya actualizados.
         const modal = modalDeContexto(contexto);
         if (modal) modal.show();
       }
@@ -1236,7 +1397,8 @@
 
       // Guarda la carpeta de Drive donde estaba el archivo recién elegido,
       // para que la próxima vez que se abra el picker en este mismo
-      // contexto ("nuevo", "editar" o "remito") arranque ahí directamente.
+      // contexto ("nuevo", "editar", "remito", "sanitario", etc.) arranque
+      // ahí directamente.
       function guardarCarpetaDeArchivo(contexto, archivo) {
         try {
           const parentId = archivo[google.picker.Document.PARENT_ID];
@@ -1260,11 +1422,23 @@
       let expandidas = new Set(); // zonas donde se tocó "Ver todas"
       const LIMITE_POR_SECCION = 20;
 
+      // Estado del módulo de registros sanitarios (pestaña "SANITARIOS").
+      // Independiente del "db"/"expandidas"/etc. de tareas: tiene su propio
+      // objeto agrupado por zona, su propio filtro de zonas, su propia
+      // búsqueda y su propio set de zonas expandidas.
+      let dbSanitarios = {}; // { "NOMBRE ZONA": [ {fila, fecha, codigoTienda, tipo, marca, cantidad, foto}, ... ] }
+      let zonasFiltroSanitarios = []; // vacío = todas
+      let expandidasSanitarios = new Set();
+
       const modalEdit = new bootstrap.Modal(document.getElementById("modalEditar"), {
         backdrop: "static",
         keyboard: false
       });
       const modalRemito = new bootstrap.Modal(document.getElementById("modalRemito"), {
+        backdrop: "static",
+        keyboard: false
+      });
+      const modalEditSanitario = new bootstrap.Modal(document.getElementById("modalEditarSanitario"), {
         backdrop: "static",
         keyboard: false
       });
@@ -1284,6 +1458,10 @@
 
         document.getElementById("selectTiendaChecklist").innerHTML = opcionesTiendasHTML(TIENDAS);
         renderChecklist();
+
+        const selTiendaSan = document.getElementById("selectTiendaSanitario");
+        selTiendaSan.innerHTML = opcionesTiendasHTML(TIENDAS);
+        onCambioTiendaSanitario(); // fija la hoja oculta según la primera tienda por defecto
       }
 
       function onCambioTiendaNuevo() {
@@ -1291,6 +1469,12 @@
         const hoja = hojaDeCodigoTienda(codigo);
         document.getElementById("hojaNuevoHidden").value = hoja;
         actualizarSugerenciasTarea();
+      }
+
+      function onCambioTiendaSanitario() {
+        const codigo = document.getElementById("selectTiendaSanitario").value;
+        const hoja = hojaDeCodigoTienda(codigo);
+        document.getElementById("hojaSanitarioHidden").value = hoja;
       }
 
       // Alterna entre cargar una sola tarea (input de siempre) o varias de
@@ -1313,12 +1497,21 @@
       function verTab(n) {
         document.getElementById("cont1").style.display = n === 1 ? "block" : "none";
         document.getElementById("cont4").style.display = n === 4 ? "block" : "none";
+        document.getElementById("cont6").style.display = n === 6 ? "block" : "none";
         document.getElementById("cont5").style.display = n === 5 ? "block" : "none";
         document.getElementById("t1").classList.toggle("active", n === 1);
         document.getElementById("t4").classList.toggle("active", n === 4);
+        document.getElementById("t6").classList.toggle("active", n === 6);
         document.getElementById("t5").classList.toggle("active", n === 5);
         if (n === 1) document.getElementById("fechaNuevo").value = obtenerFechaActual();
         if (n === 4) { renderZonasFiltro(); renderReporte(); }
+        if (n === 6) {
+          if (!document.getElementById("fechaSanitario").value) {
+            document.getElementById("fechaSanitario").value = obtenerFechaActual();
+          }
+          renderZonasFiltroSanitarios();
+          cargarSanitarios();
+        }
         if (n === 5) {
           if (!document.getElementById("fechaChecklist").value) {
             document.getElementById("fechaChecklist").value = obtenerFechaActual();
@@ -1762,6 +1955,258 @@
           seleccionadas.delete(`${hoja}||${fila}`);
           actualizarFlotante();
           cargar();
+        }
+      }
+
+      // ============================================================
+      // REGISTROS SANITARIOS (pestaña "SANITARIOS")
+      // ============================================================
+      // Mismo patrón que TAREAS (agrupado db[zona] = [...], filtro por
+      // zona con pills, búsqueda, "Ver todas" por sección), pero sin
+      // selección múltiple ni Remito: acá cada fila es un registro
+      // independiente de canilla/inodoro/lavatorio con su cantidad.
+
+      function renderZonasFiltroSanitarios() {
+        document.getElementById("contenedorZonasFiltroSanitarios").innerHTML =
+          `<div class="pill-cat ${zonasFiltroSanitarios.length === 0 ? "active" : ""}" onclick="toggleFiltroZonaSanitarios('TODAS')">Todas</div>` +
+          ZONAS.map((z) => `<div class="pill-cat ${zonasFiltroSanitarios.includes(z) ? "active" : ""}" onclick="toggleFiltroZonaSanitarios('${z.replace(/'/g, "\\'")}')">${z}</div>`).join("");
+      }
+
+      function toggleFiltroZonaSanitarios(zona) {
+        if (zona === "TODAS") { zonasFiltroSanitarios = []; }
+        else {
+          if (zonasFiltroSanitarios.includes(zona)) zonasFiltroSanitarios = zonasFiltroSanitarios.filter((z) => z !== zona);
+          else zonasFiltroSanitarios.push(zona);
+        }
+        renderZonasFiltroSanitarios();
+        expandidasSanitarios.clear();
+        renderSanitarios();
+      }
+
+      function expandirZonaSanitarios(zona) {
+        expandidasSanitarios.add(zona);
+        renderSanitarios();
+      }
+
+      function colapsarZonaSanitarios(zona) {
+        expandidasSanitarios.delete(zona);
+        renderSanitarios();
+      }
+
+      const ICONO_TIPO_SANITARIO = {
+        "Canilla": "bi-droplet",
+        "Inodoro": "bi-water",
+        "Lavatorio": "bi-basket2"
+      };
+
+      function renderFilaSanitario(t) {
+        const fLab = formatearFechaCorta(t.fecha);
+        const paramCodigo = (t.codigoTienda || "").toString().replace(/'/g, "\\'");
+        const paramFecha = (t.fecha || "").replace(/'/g, "\\'");
+        const paramTipo = (t.tipo || "").replace(/'/g, "\\'");
+        const paramMarca = (t.marca || "").replace(/'/g, "\\'");
+        const paramCantidad = (t.cantidad || "").toString().replace(/'/g, "\\'");
+        const paramFoto = (t.foto || "").replace(/'/g, "\\'");
+        const paramHoja = t.hoja.replace(/'/g, "\\'");
+        const tiendaInfo = buscarTiendaPorCodigo(t.codigoTienda);
+        const tiendaLabel = tiendaInfo ? `${t.codigoTienda} - ${tiendaInfo.nombre}` : t.codigoTienda;
+        const icono = ICONO_TIPO_SANITARIO[t.tipo] || "bi-tools";
+
+        let botonFoto = "";
+        if (t.foto) botonFoto = `<a href="${t.foto}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size:0.65rem; border-radius: 8px;" onclick="event.stopPropagation()"><i class="bi bi-image"></i> Ver foto</a>`;
+        else botonFoto = `<span class="text-muted" style="font-size:0.65rem;">Sin foto</span>`;
+
+        return `<div class="tarea-fila">
+            <div class="d-flex align-items-start gap-2" style="flex:1; min-width:0;">
+              <i class="bi ${icono} text-muted mt-1"></i>
+              <div style="min-width:0;">
+                <div class="small fw-bold">${t.tipo} <span class="text-muted fw-normal">(${fLab})</span></div>
+                <div style="font-size:0.7rem; color:#888">${t.hoja} | Tienda: ${tiendaLabel}</div>
+                <div class="text-muted" style="font-size:0.7rem;">
+                  ${t.marca ? `<i class="bi bi-tag"></i> ${t.marca} · ` : ""}Cantidad: ${t.cantidad || 1}
+                </div>
+                <div class="mt-1 d-flex align-items-center flex-wrap gap-2">
+                  ${botonFoto}
+                </div>
+              </div>
+            </div>
+            <div class="text-end d-flex flex-column align-items-end gap-2">
+              <i class="bi bi-pencil-square text-muted" style="cursor:pointer" onclick="abrirEditorSanitario('${paramHoja}', ${t.fila}, '${paramCodigo}', '${paramFecha}', '${paramTipo}', '${paramMarca}', '${paramCantidad}', '${paramFoto}')"></i>
+              <i class="bi bi-trash3 text-danger" style="cursor:pointer" onclick="eliminarSanitario('${paramHoja}', ${t.fila})"></i>
+            </div>
+          </div>`;
+      }
+
+      function renderSanitarios() {
+        const query = document.getElementById("inputBusquedaSanitarios").value.toLowerCase();
+        const zonasAMostrar = zonasFiltroSanitarios.length === 0 ? ZONAS : zonasFiltroSanitarios;
+
+        let totalGeneral = 0;
+        let totalMostradas = 0;
+        let html = "";
+
+        zonasAMostrar.forEach((zona) => {
+          const registrosZona = (dbSanitarios[zona] || []).map((t) => Object.assign({ hoja: zona }, t));
+          totalGeneral += registrosZona.length;
+
+          const filtradas = registrosZona.filter((t) => {
+            const infoTienda = buscarTiendaPorCodigo(t.codigoTienda);
+            const nombreTienda = infoTienda ? infoTienda.nombre.toLowerCase() : "";
+            return !query ||
+              (t.codigoTienda || "").toString().toLowerCase().includes(query) ||
+              nombreTienda.includes(query) ||
+              (t.tipo || "").toLowerCase().includes(query) ||
+              (t.marca || "").toLowerCase().includes(query);
+          });
+
+          if (filtradas.length === 0) return;
+
+          // Mismo criterio que en TAREAS: comparación directa de strings
+          // "yyyy-mm-dd", que ya ordena cronológicamente igual que
+          // alfabéticamente.
+          filtradas.sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "") || b.fila - a.fila);
+
+          totalMostradas += filtradas.length;
+
+          const expandida = expandidasSanitarios.has(zona);
+          const aRenderizar = expandida ? filtradas : filtradas.slice(0, LIMITE_POR_SECCION);
+          const restantes = filtradas.length - aRenderizar.length;
+          const zonaEscapada = zona.replace(/'/g, "\\'");
+
+          html += `<div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-bold" style="font-size:0.75rem;">${zona}</span>
+              <span class="text-muted" style="font-size:0.68rem;">${filtradas.length} registro(s)</span>
+            </div>`;
+
+          html += aRenderizar.map(renderFilaSanitario).join("");
+
+          if (restantes > 0) {
+            html += `<button class="btn-fino w-100 mt-1" onclick="expandirZonaSanitarios('${zonaEscapada}')">Ver todas (${restantes} más)</button>`;
+          } else if (expandida && filtradas.length > LIMITE_POR_SECCION) {
+            html += `<button class="btn-fino w-100 mt-1" onclick="colapsarZonaSanitarios('${zonaEscapada}')">Ver menos</button>`;
+          }
+
+          html += `</div>`;
+        });
+
+        document.getElementById("contadorSanitarios").innerText = `${totalMostradas} de ${totalGeneral} registro(s)`;
+
+        document.getElementById("listaSanitarios").innerHTML =
+          html || `<div class="text-center text-muted small py-4">No hay registros para mostrar.</div>`;
+      }
+
+      async function cargarSanitarios() {
+        const btnRec = document.getElementById("btnRecargarSanitarios");
+        if (btnRec) btnRec.classList.add("spinning");
+        try {
+          const r = await fetch(`${scriptURL}?action=sanitarios&clave=${encodeURIComponent(CLAVE_APP_GUARDADA)}&t=${Date.now()}`);
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          const nuevaDb = await r.json();
+          if (nuevaDb && nuevaDb.error === "unauthorized") {
+            manejarSesionInvalida();
+            return;
+          }
+          dbSanitarios = nuevaDb;
+        } catch (error) {
+          console.error("Error cargando registros sanitarios:", error);
+          alert("No se pudo actualizar la lista de registros sanitarios. Revisá tu conexión y tocá 'Actualizar'.");
+        } finally {
+          if (btnRec) btnRec.classList.remove("spinning");
+        }
+        renderSanitarios();
+      }
+
+      function recargarManualSanitarios() {
+        cargarSanitarios();
+      }
+
+      async function prepararEnvioSanitario(e, modo) {
+        e.preventDefault();
+        const form = e.target;
+        const btn = form.querySelector('button[type="submit"]');
+        const textoOriginalBtn = btn.innerText;
+
+        const fechaInput = document.getElementById(modo === "editar" ? "editSanitarioFecha" : "fechaSanitario");
+
+        if (modo === "nuevo") {
+          if (!fechaInput || !fechaInput.value) { alert("Fecha inválida"); return; }
+        }
+
+        const fotoVal = document.getElementById(modo === "editar" ? "editSanitarioFoto" : "fotoSanitarioNuevo").value.trim();
+
+        const fd = new FormData(form);
+        if (modo === "nuevo") {
+          fd.set("fecha_manual", fechaInput.value); // "yyyy-mm-dd"
+        } else {
+          // Igual que en tareas: al editar la fecha es opcional. Si no se
+          // tocó (o se borró), no se envía y el backend conserva la fecha
+          // original de carga.
+          fd.set("fecha_manual", fechaInput && fechaInput.value ? fechaInput.value : "");
+        }
+        fd.append("action", modo === "editar" ? "edit_sanitario" : "add_sanitario");
+        fd.set("foto", fotoVal);
+        fd.append("clave", CLAVE_APP_GUARDADA);
+
+        btn.disabled = true;
+        btn.innerText = "...";
+        try {
+          const resp = await fetch(scriptURL, { method: "POST", body: fd });
+          const data = await resp.json().catch(() => null);
+          if (data && data.error === "unauthorized") {
+            manejarSesionInvalida();
+            throw new Error("unauthorized");
+          }
+
+          if (modo === "editar") {
+            modalEditSanitario.hide();
+          } else {
+            form.reset();
+            document.getElementById("fechaSanitario").value = obtenerFechaActual();
+            document.getElementById("cantidadSanitario").value = 1;
+            document.getElementById("preview_foto_sanitario").innerText = "";
+            document.getElementById("fotoSanitarioNuevo").value = "";
+            onCambioTiendaSanitario();
+          }
+          await cargarSanitarios();
+        } catch (error) {
+          if (!error || error.message !== "unauthorized") {
+            alert("Error al guardar el registro sanitario.");
+          }
+        } finally {
+          btn.disabled = false;
+          btn.innerText = textoOriginalBtn;
+        }
+      }
+
+      function abrirEditorSanitario(hoja, fila, codigo, fecha, tipo, marca, cantidad, foto) {
+        document.getElementById("editSanitarioId").value = fila;
+        document.getElementById("editSanitarioHoja").value = hoja;
+
+        const tiendasDeLaZona = TIENDAS.filter((t) => t.hoja === hoja);
+        const selTienda = document.getElementById("editSanitarioCodigoTienda");
+        selTienda.innerHTML = opcionesTiendasHTML(tiendasDeLaZona);
+        selTienda.value = codigo;
+
+        document.getElementById("editSanitarioTipo").value = tipo;
+        document.getElementById("editSanitarioMarca").value = marca;
+        document.getElementById("editSanitarioCantidad").value = cantidad || 1;
+        document.getElementById("editSanitarioFecha").value = fecha;
+        document.getElementById("editSanitarioFoto").value = foto;
+        document.getElementById("preview_foto_editarSanitario").innerText = "";
+
+        modalEditSanitario.show();
+      }
+
+      async function eliminarSanitario(hoja, fila) {
+        if (confirm("¿Borrar este registro sanitario?")) {
+          const resp = await fetch(`${scriptURL}?action=delete_sanitario&hoja=${encodeURIComponent(hoja)}&id=${fila}&clave=${encodeURIComponent(CLAVE_APP_GUARDADA)}`);
+          const data = await resp.json().catch(() => null);
+          if (data && data.error === "unauthorized") {
+            manejarSesionInvalida();
+            return;
+          }
+          cargarSanitarios();
         }
       }
 
