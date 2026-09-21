@@ -495,7 +495,7 @@
     <script src="https://apis.google.com/js/api.js" onload="onGapiLoaded()"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-      const scriptURL = "https://script.google.com/macros/s/AKfycbzXj3YiHTHyHtqXejNWAqdvfJcPylRVPV_9FBtdC3E6fc-QtuCa4lqcW8ul3Or7EMUDoA/exec";
+      const scriptURL = "https://script.google.com/macros/s/AKfycbwH2vbCB_-ZgrxistaVElX-EZV7htHN7L1QntGz1L1fKGsal88GmYzBWeK30SUBkxMWNg/exec";
 
       // ============================================================
       // ACCESO CON CONTRASEÑA (ver también CLAVE_APP en Code.gs)
@@ -810,6 +810,29 @@
         URL.revokeObjectURL(url);
       }
 
+      // Pide una sola vez el link directo a la pestaña CHECKLIST_DIARIO y
+      // lo cachea en memoria. Se llama al abrir la pestaña (ver verTab),
+      // NO al compartir, para no meter una espera de red justo antes del
+      // navigator.share() (eso puede hacer que el navegador ya no lo deje
+      // compartir, por perder el "gesto del usuario").
+      let LINK_CHECKLIST_SHEET = null;
+
+      async function obtenerLinkChecklistSheet() {
+        if (LINK_CHECKLIST_SHEET) return LINK_CHECKLIST_SHEET;
+        try {
+          const r = await fetch(`${scriptURL}?action=info_checklist&clave=${encodeURIComponent(CLAVE_APP_GUARDADA)}&t=${Date.now()}`);
+          if (!r.ok) return null;
+          const data = await r.json();
+          if (data && data.ok && data.url) {
+            LINK_CHECKLIST_SHEET = data.url;
+          }
+          return LINK_CHECKLIST_SHEET;
+        } catch (error) {
+          console.error("No se pudo obtener el link de la hoja de checklist:", error);
+          return null;
+        }
+      }
+
       // Manda los ítems a Code.gs para que queden guardados en la hoja
       // CHECKLIST_DIARIO (ver accionGuardarChecklist). Devuelve la
       // respuesta ya parseada, o null si falló la conexión.
@@ -846,42 +869,44 @@
         const btn = document.getElementById("btnEnviarChecklist");
         const textoOriginal = btn.innerText;
         btn.disabled = true;
+        btn.innerText = "Generando imagen...";
 
         const items = recolectarItemsChecklist();
 
-        // 1) Guardar en la hoja CHECKLIST_DIARIO. Si por algún motivo
-        // falla (sin conexión, clave vencida, etc.), avisamos pero
-        // seguimos igual con la imagen: lo prioritario es que la
-        // información le llegue a tu jefe, no que se pierda el envío por
-        // un problema al guardar.
-        btn.innerText = "Guardando checklist...";
-        const dataGuardado = await guardarChecklistEnSheet(codigo, nombreDeTienda(codigo), fechaValor, items);
+        // Disparamos el guardado en la hoja PERO NO lo esperamos acá: si
+        // lo esperáramos antes de compartir, la espera de red puede hacer
+        // que el navegador ya no deje compartir (ver comentario de más
+        // arriba). Se guarda en paralelo; su resultado se revisa después,
+        // una vez que ya se intentó compartir la imagen.
+        const promesaGuardado = guardarChecklistEnSheet(codigo, nombreDeTienda(codigo), fechaValor, items);
 
-        if (dataGuardado && dataGuardado.error === "unauthorized") {
-          btn.disabled = false;
-          btn.innerText = textoOriginal;
-          manejarSesionInvalida();
-          return;
-        }
-        if (!dataGuardado || !dataGuardado.ok) {
-          console.error("No se pudo guardar el checklist en la hoja:", dataGuardado);
-          alert("No se pudo guardar el checklist en la hoja. Se va a generar y compartir la imagen igual.");
-        }
-
-        // 2) Generar y compartir la imagen (como ya funcionaba).
-        btn.innerText = "Generando imagen...";
         try {
           const blob = await generarImagenChecklist(items, codigo, fechaValor);
           const nombreArchivo = `checklist_${nombreDeTienda(codigo).replace(/\s+/g, "_")}_${fechaValor}.png`;
           const archivo = new File([blob], nombreArchivo, { type: "image/png" });
 
+          // Si ya tenemos el link a la hoja (se pidió al abrir la
+          // pestaña), lo sumamos al texto para que tu jefe tenga, en el
+          // mismo mensaje, la imagen Y un único link donde ver las notas
+          // y abrir cada adjunto.
+          let texto = `Checklist ${fechaValor} - ${nombreDeTienda(codigo)} (${codigo})`;
+          if (LINK_CHECKLIST_SHEET) {
+            texto += `\nVer notas y adjuntos: ${LINK_CHECKLIST_SHEET}`;
+          }
+
           if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
             // Un toque: abre el menú de "Compartir" del celular con la
-            // imagen ya lista adentro.
+            // imagen ya lista adentro. OJO: acá no se puede elegir de
+            // antemano el contacto de WhatsApp -eso solo es posible
+            // mandando texto puro por un link wa.me, que no admite
+            // adjuntar imágenes-, así que hay que elegir el chat de tu
+            // jefe en la lista que aparece. En Android, después de
+            // compartirle un par de veces a la misma persona, esa persona
+            // suele aparecer sola arriba de todo en "compartir directo".
             await navigator.share({
               files: [archivo],
               title: "Checklist de mantenimiento",
-              text: `Checklist ${fechaValor} - ${nombreDeTienda(codigo)} (${codigo})`
+              text: texto
             });
           } else {
             // Respaldo (típicamente computadora de escritorio): se
@@ -900,6 +925,18 @@
         } finally {
           btn.disabled = false;
           btn.innerText = textoOriginal;
+        }
+
+        // Ahora sí revisamos cómo salió el guardado en la hoja (ya sea que
+        // haya terminado antes o después de compartir, no importa el
+        // orden acá; lo único que nos importaba era no esperarlo ANTES de
+        // compartir).
+        const dataGuardado = await promesaGuardado;
+        if (dataGuardado && dataGuardado.error === "unauthorized") {
+          manejarSesionInvalida();
+        } else if (!dataGuardado || !dataGuardado.ok) {
+          console.error("No se pudo guardar el checklist en la hoja:", dataGuardado);
+          alert("La imagen se generó, pero no se pudo guardar el checklist en la hoja CHECKLIST_DIARIO. Revisá la conexión.");
         }
       }
 
@@ -1282,8 +1319,11 @@
         document.getElementById("t5").classList.toggle("active", n === 5);
         if (n === 1) document.getElementById("fechaNuevo").value = obtenerFechaActual();
         if (n === 4) { renderZonasFiltro(); renderReporte(); }
-        if (n === 5 && !document.getElementById("fechaChecklist").value) {
-          document.getElementById("fechaChecklist").value = obtenerFechaActual();
+        if (n === 5) {
+          if (!document.getElementById("fechaChecklist").value) {
+            document.getElementById("fechaChecklist").value = obtenerFechaActual();
+          }
+          obtenerLinkChecklistSheet(); // la pedimos ya, para tenerla lista antes de compartir
         }
       }
 
