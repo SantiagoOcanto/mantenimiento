@@ -59,9 +59,9 @@
         flex: 1;
         border: none;
         background: none;
-        padding: 12px 4px;
+        padding: 12px 2px;
         font-weight: 800;
-        font-size: 0.72rem;
+        font-size: 0.64rem;
         color: #9aa7b0;
       }
       .tab-nav button.active {
@@ -78,6 +78,7 @@
         font-weight: 800;
         width: 100%;
       }
+      .btn-main:disabled { opacity: 0.5; }
 
       .btn-fino {
         font-size: 0.7rem;
@@ -204,6 +205,42 @@
       #btnRecargar.spinning i,
       #btnRecargarSanitarios.spinning i { animation: girar 0.8s linear infinite; }
       @keyframes girar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+      /* REMITOS: nombre con sufijo .jpg fijo */
+      .sufijo-jpg {
+        display: flex;
+        align-items: center;
+        border: 1px solid var(--main-blue);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+      .sufijo-jpg input {
+        border: none !important;
+        border-radius: 0 !important;
+        margin-bottom: 0 !important;
+        flex: 1;
+        min-width: 0;
+      }
+      .sufijo-jpg span {
+        padding: 0 12px;
+        background: #eef3f8;
+        color: #666;
+        font-weight: bold;
+        align-self: stretch;
+        display: flex;
+        align-items: center;
+        font-size: 0.9rem;
+      }
+      #previewRemito {
+        width: 100%;
+        margin-top: 8px;
+        border-radius: 12px;
+        display: none;
+      }
+      #estadoRemito { font-size: 0.85rem; text-align: center; margin-top: 10px; }
+      #estadoRemito.ok { color: var(--ok-green); }
+      #estadoRemito.error { color: #c62828; }
     </style>
   </head>
   <body>
@@ -217,6 +254,7 @@
       <button id="t6" onclick="verTab(6)">SANITARIOS</button>
       <button id="t5" onclick="verTab(5)">CHECKLIST</button>
       <button id="t7" onclick="verTab(7)">PLANTA</button>
+      <button id="t8" onclick="verTab(8)">REMITOS</button>
     </div>
 
     <div id="cont1">
@@ -493,6 +531,42 @@
       </div>
     </div>
 
+    <!-- SOLAPA REMITOS: subir foto a una carpeta de Drive con nombre elegido -->
+    <div id="cont8" style="display: none">
+      <div class="card-custom">
+        <h6 class="fw-bold mb-2"><i class="bi bi-receipt"></i> Subir foto de remito</h6>
+
+        <label class="small fw-bold">Carpeta de destino:</label>
+        <div class="d-flex gap-2 align-items-start">
+          <select id="selectCarpetaRemito" class="form-select" onchange="recordarCarpetaRemito()">
+            <option>Cargando...</option>
+          </select>
+          <button type="button" class="btn-fino" style="margin-top:2px; padding-top:9px; padding-bottom:9px;" onclick="nuevaCarpetaRemito()">
+            + Nueva
+          </button>
+        </div>
+
+        <label class="small fw-bold">Nombre del archivo:</label>
+        <div class="sufijo-jpg">
+          <input type="text" id="nombreRemito" class="form-control" placeholder="Ej: R-00123" autocomplete="off" />
+          <span>.jpg</span>
+        </div>
+
+        <label class="small fw-bold">Foto:</label>
+        <input type="file" id="archivoRemito" accept="image/*" style="display:none" />
+        <button type="button" class="btn btn-main" style="background: var(--ok-green);" onclick="document.getElementById('archivoRemito').click()">
+          <i class="bi bi-camera"></i> Sacar / elegir foto
+        </button>
+        <img id="previewRemito" alt="Vista previa" />
+
+        <button type="button" class="btn-main mt-3" id="btnSubirRemito" onclick="subirRemito()">
+          <i class="bi bi-cloud-arrow-up"></i> SUBIR A DRIVE
+        </button>
+        <div id="estadoRemito"></div>
+        <div id="historialRemito" class="small mt-3"></div>
+      </div>
+    </div>
+
     <div class="modal fade" id="modalEditar" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius: 20px">
@@ -635,7 +709,7 @@
     <script src="https://apis.google.com/js/api.js" onload="onGapiLoaded()"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-      const scriptURL = "https://script.google.com/macros/s/AKfycbzpkYpikOJhwodnG-38FNHRgsDove26zfdaZAnKx5RyBk0Ew0tIyuD4vhnYJeeq_ph1UQ/exec";
+      const scriptURL = "https://script.google.com/macros/s/AKfycbwd1tzLtdl6jUw75IoFFVQVr09dIwTgZsL4_h99Yrzd7ub74vNnJkTR980st7Kdlr0PXQ/exec";
 
       // Clave fija (debe coincidir con CLAVE_APP en Code.gs). Ya no se pide en pantalla.
       const CLAVE_APP_GUARDADA = "cuatro3836";
@@ -659,7 +733,9 @@
         "Unicenter",
         "Florida",
         "Abasto",
-        "Santa Fe"
+        "Santa Fe",
+        "TOM",
+        "Cedi"
       ];
 
       // ============================================================
@@ -1194,6 +1270,158 @@
       }
 
       // ============================================================
+      // REMITOS: subir foto a una subcarpeta de Drive con nombre elegido
+      // ============================================================
+      const MAX_LADO_REMITO = 1800; // px del lado más largo
+      const KEY_CARPETA_REMITO = "remitos_ultima_carpeta";
+      let imagenRemitoBase64 = "";
+      let carpetasRemitoCargadas = false;
+
+      function escaparHtml(s) {
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+
+      function setEstadoRemito(msg, clase) {
+        const el = document.getElementById("estadoRemito");
+        el.textContent = msg;
+        el.className = clase || "";
+      }
+
+      async function cargarCarpetasRemito(seleccionarId) {
+        const sel = document.getElementById("selectCarpetaRemito");
+        try {
+          const r = await fetch(`${scriptURL}?action=remitos_carpetas&clave=${encodeURIComponent(CLAVE_APP_GUARDADA)}&t=${Date.now()}`);
+          const data = await r.json();
+          if (data && data.error === "unauthorized") { manejarSesionInvalida(); return; }
+          if (!data.ok) throw new Error(data.error || "Error desconocido");
+
+          const guardada = seleccionarId || localStorage.getItem(KEY_CARPETA_REMITO) || "";
+          if (data.carpetas.length === 0) {
+            sel.innerHTML = `<option value="">(sin subcarpetas: creá una con + Nueva)</option>`;
+          } else {
+            sel.innerHTML = data.carpetas.map((c) => `<option value="${escaparHtml(c.id)}">${escaparHtml(c.nombre)}</option>`).join("");
+            if (guardada && data.carpetas.some((c) => c.id === guardada)) sel.value = guardada;
+          }
+          carpetasRemitoCargadas = true;
+        } catch (err) {
+          sel.innerHTML = `<option value="">Error al cargar carpetas</option>`;
+          setEstadoRemito("No se pudieron cargar las carpetas: " + err.message, "error");
+        }
+      }
+
+      function recordarCarpetaRemito() {
+        const id = document.getElementById("selectCarpetaRemito").value;
+        if (id) localStorage.setItem(KEY_CARPETA_REMITO, id);
+      }
+
+      async function nuevaCarpetaRemito() {
+        const nombre = (prompt("Nombre de la carpeta nueva (ej: Diciembre):") || "").trim();
+        if (!nombre) return;
+        setEstadoRemito("Creando carpeta...");
+        const fd = new FormData();
+        fd.append("action", "remito_crear_carpeta");
+        fd.append("clave", CLAVE_APP_GUARDADA);
+        fd.append("nombre", nombre);
+        try {
+          const resp = await fetch(scriptURL, { method: "POST", body: fd });
+          const data = await resp.json();
+          if (data && data.error === "unauthorized") { manejarSesionInvalida(); return; }
+          if (!data.ok) throw new Error(data.error || "Error desconocido");
+          localStorage.setItem(KEY_CARPETA_REMITO, data.id);
+          await cargarCarpetasRemito(data.id);
+          setEstadoRemito("✔ Carpeta lista: " + data.nombre, "ok");
+        } catch (err) {
+          setEstadoRemito("No se pudo crear la carpeta: " + err.message, "error");
+        }
+      }
+
+      function comprimirImagen(file) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          const url = URL.createObjectURL(file);
+          img.onload = () => {
+            let { width, height } = img;
+            const escala = Math.min(1, MAX_LADO_REMITO / Math.max(width, height));
+            width = Math.round(width * escala);
+            height = Math.round(height * escala);
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL("image/jpeg", 0.8).split(",")[1]);
+          };
+          img.onerror = reject;
+          img.src = url;
+        });
+      }
+
+      document.getElementById("archivoRemito").addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setEstadoRemito("Procesando foto...");
+        try {
+          imagenRemitoBase64 = await comprimirImagen(file);
+          const prev = document.getElementById("previewRemito");
+          prev.src = "data:image/jpeg;base64," + imagenRemitoBase64;
+          prev.style.display = "block";
+          setEstadoRemito("");
+        } catch (err) {
+          setEstadoRemito("No se pudo leer la foto.", "error");
+        }
+      });
+
+      async function subirRemito() {
+        const carpetaId = document.getElementById("selectCarpetaRemito").value;
+        const nombre = document.getElementById("nombreRemito").value.trim().replace(/\.(jpe?g)$/i, "");
+        if (!carpetaId) { setEstadoRemito("Elegí una carpeta (o creá una con + Nueva).", "error"); return; }
+        if (!nombre) { setEstadoRemito("Escribí el nombre del archivo.", "error"); return; }
+        if (!imagenRemitoBase64) { setEstadoRemito("Elegí o sacá una foto.", "error"); return; }
+
+        const btn = document.getElementById("btnSubirRemito");
+        btn.disabled = true;
+        setEstadoRemito("Subiendo...");
+
+        const fd = new FormData();
+        fd.append("action", "remito_subir");
+        fd.append("clave", CLAVE_APP_GUARDADA);
+        fd.append("carpeta_id", carpetaId);
+        fd.append("nombre", nombre);
+        fd.append("imagen", imagenRemitoBase64);
+
+        try {
+          const resp = await fetch(scriptURL, { method: "POST", body: fd });
+          const data = await resp.json();
+          if (data && data.error === "unauthorized") { manejarSesionInvalida(); return; }
+          if (data.ok) {
+            setEstadoRemito(`✔ Subido a "${data.carpeta}" como ${data.nombre}`, "ok");
+            const hist = document.getElementById("historialRemito");
+            const fila = document.createElement("div");
+            fila.className = "d-flex align-items-center justify-content-between gap-2 mb-1";
+            fila.innerHTML =
+              `<a href="${escaparHtml(data.url)}" target="_blank">✔ ${escaparHtml(data.carpeta)} / ${escaparHtml(data.nombre)}</a>` +
+              `<button type="button" class="btn-fino">Copiar link</button>`;
+            fila.querySelector("button").onclick = (ev) => {
+              navigator.clipboard.writeText(data.url).then(() => { ev.target.textContent = "¡Copiado!"; });
+            };
+            hist.prepend(fila);
+
+            document.getElementById("nombreRemito").value = "";
+            document.getElementById("archivoRemito").value = "";
+            document.getElementById("previewRemito").style.display = "none";
+            imagenRemitoBase64 = "";
+            document.getElementById("nombreRemito").focus();
+          } else {
+            setEstadoRemito("Error: " + (data.error || "desconocido"), "error");
+          }
+        } catch (err) {
+          setEstadoRemito("No se pudo conectar. Revisá tu conexión.", "error");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      // ============================================================
       // TIENDAS
       // ============================================================
       const TIENDAS = [
@@ -1205,7 +1433,9 @@
         { codigo: "7003", nombre: "Unicenter", hoja: "Unicenter" },
         { codigo: "7008", nombre: "Florida", hoja: "Florida" },
         { codigo: "7005", nombre: "Abasto", hoja: "Abasto" },
-        { codigo: "7004", nombre: "Santa Fe", hoja: "Santa Fe" }
+        { codigo: "7004", nombre: "Santa Fe", hoja: "Santa Fe" },
+        { codigo: "7063", nombre: "TOM", hoja: "TOM" },
+        { codigo: "7001", nombre: "Cedi", hoja: "Cedi" }
       ];
 
       function buscarTiendaPorCodigo(codigo) {
@@ -1522,7 +1752,7 @@
       }
 
       function verTab(n) {
-        [1, 4, 5, 6, 7].forEach((k) => {
+        [1, 4, 5, 6, 7, 8].forEach((k) => {
           document.getElementById("cont" + k).style.display = n === k ? "block" : "none";
           document.getElementById("t" + k).classList.toggle("active", n === k);
         });
@@ -1545,6 +1775,9 @@
           if (!document.getElementById("fechaPlanta").value) {
             document.getElementById("fechaPlanta").value = obtenerFechaActual();
           }
+        }
+        if (n === 8) {
+          if (!carpetasRemitoCargadas) cargarCarpetasRemito();
         }
       }
 
