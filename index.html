@@ -1470,12 +1470,28 @@
         return link ? `${codigo} | Drive: ${link}` : codigo;
       }
 
+      
       function separarRemito(remitoStr) {
-        if (!remitoStr) return { codigo: "", link: "" };
-        const m = remitoStr.match(/^(.*?)\s*\|\s*Drive:\s*(\S+)\s*$/);
-        if (m) return { codigo: m[1].trim(), link: m[2].trim() };
-        return { codigo: remitoStr.trim(), link: "" };
+        if (remitoStr === null || remitoStr === undefined || remitoStr === "") {
+        return { codigo: "", link: "" };
       }
+
+        const texto = String(remitoStr).trim();
+
+        if (!texto) return { codigo: "", link: "" };
+
+        const m = texto.match(/^(.*?)\s*\|\s*Drive:\s*(\S+)\s*$/);
+
+        if (m) {
+          return {
+            codigo: m[1].trim(),
+            link: m[2].trim()
+          };
+      }
+
+  return { codigo: texto, link: "" };
+}
+
 
       function formatearFechaCorta(fechaStr) {
         if (!fechaStr) return "";
